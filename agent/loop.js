@@ -124,6 +124,15 @@
       if ((tr.name === 'run_analysis' || tr.name === 'set_field') && Array.isArray(res.chunks) && res.chunks.length) {
         return res.chunks.slice(0, 4);
       }
+      if (tr.name === 'research_agronomic_mock' || (tr.name === 'run_analysis' && res.is_preliminary_estimate)) {
+        var outChunks = [];
+        if (res.summary) outChunks.push(res.summary);
+        if (res.recommendation) outChunks.push(res.recommendation);
+        if (res.validation_note) outChunks.push(res.validation_note);
+        if (outChunks.length && root.SOLPrompts) {
+          return root.SOLPrompts.splitSpeechChunks(outChunks.join(' '), 200);
+        }
+      }
       if (tr.name === 'change_area' && Array.isArray(res.chunks) && res.chunks.length) {
         var areaLabel = res.area_formatted || '';
         return ['Prontinho! Refiz as previsões para ' + areaLabel + '.', res.chunks[2], res.chunks[3]];
@@ -281,6 +290,9 @@
         memory.extractFactsFromTurn(userUtterance, root.A);
         memory.recordTurn('user', userUtterance);
         memory.recordTurn('assistant', finalChunks.join(' '));
+        if (typeof memory.saveContextSnapshot === 'function') {
+          memory.saveContextSnapshot();
+        }
       }
 
       if (typeof root.seq === 'function') {

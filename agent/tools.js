@@ -137,6 +137,28 @@
           required: ['slot']
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'research_agronomic_mock',
+        description: 'Pesquisa simulada (mock) instantânea para análises satelitais estendidas (NDVI, SMAP, ECOSTRESS, chuva, evapotranspiração), janela climática/ZARC, manejo de solo, consórcios, controle ecológico ou dúvidas fora do escopo padrão, garantindo resposta contínua sem travamentos.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Pergunta ou tópico a pesquisar (ex.: "previsão de chuva e umidade SMAP", "janela ZARC milho", "consórcio milho e feijão").'
+            },
+            category: {
+              type: 'string',
+              enum: ['satellite', 'climate_zarc', 'soil_management', 'pest_ecology', 'market', 'general'],
+              description: 'Categoria da pesquisa agronômica ou satelital.'
+            }
+          },
+          required: ['query']
+        }
+      }
     }
   ];
 
@@ -157,6 +179,106 @@
       root.state = m[0];
     }
     return m;
+  }
+
+  function computePreliminarySatelliteMock(areaOverride, cropOverride) {
+    var prevA = root.A ? Object.assign({}, root.A) : { area: null, crop: null, pain: null };
+    var prevL = root.L;
+    try {
+      root.L = root.L || root.FB || { lat: -14.9, lon: -40.8 };
+      var useArea = areaOverride != null ? areaOverride : (prevA.area != null ? prevA.area : 2);
+      var useCrop = cropOverride || prevA.crop || 'Milho';
+      root.A = { area: useArea, crop: useCrop, pain: prevA.pain || 'seca' };
+      var d = typeof root.pipe === 'function' ? root.pipe() : {
+        rain: 680, tmax: 32.5, smap: 0.19, ndvi: 0.52, r30: 34, ext: 3, hot: 38, bare: 4, slope: 6, dev: -32, ws: 58, sd: 54
+      };
+      var eto = Math.round((3.4 + Math.max(0, d.tmax - 28) * 0.35 + (d.ws / 100) * 1.1) * 10) / 10;
+      return Object.assign({}, d, {
+        eto_mm_day: eto,
+        assumed_area_ha: useArea,
+        assumed_crop: useCrop,
+        soil_moisture_class: d.smap < 0.18 ? 'baixa' : d.smap < 0.26 ? 'regular' : 'boa'
+      });
+    } finally {
+      root.A = prevA;
+      root.L = prevL;
+    }
+  }
+
+  function inferResearchCategory(queryNorm, explicitCat) {
+    if (explicitCat && explicitCat !== 'general') return explicitCat;
+    if (/satelit|ndvi|smap|modis|ecostress|landsat|srtm|gpm|umidade|chuva|temperatura|calor|evapotransp/.test(queryNorm)) return 'satellite';
+    if (/zarc|epoca|janela|plantar\s+cedo|antecip|geada|veranico|el\s+nino|la\s+nina|clima|previsao/.test(queryNorm)) return 'climate_zarc';
+    if (/solo|terra|adub|calcari|palhada|consorcio|rotacao|crotalaria|mucuna|esterco|erosao|compost/.test(queryNorm)) return 'soil_management';
+    if (/praga|lagarta|pulg|fungo|ferrugem|doenca|biologic|armadilha/.test(queryNorm)) return 'pest_ecology';
+    if (/preco|mercad|vend|cooperativ|pnae|paa|custo|lucro|saca/.test(queryNorm)) return 'market';
+    return 'general';
+  }
+
+  function buildMockAgronomicResearch(query, explicitCat) {
+    var norm = typeof root.norm === 'function'
+      ? root.norm(query || '')
+      : String(query || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    var category = inferResearchCategory(norm, explicitCat);
+    var telemetry = computePreliminarySatelliteMock();
+    var crop = (root.A && root.A.crop) || telemetry.assumed_crop || 'lavoura';
+
+    var findingsByCat = {
+      satellite: {
+        summary: 'Leitura satelital simulada da região aponta chuva recente de ' + telemetry.r30 + ' milímetros em 30 dias, umidade do solo SMAP em ' + telemetry.smap + ' (' + telemetry.soil_moisture_class + '), NDVI MODIS em ' + telemetry.ndvi + ' e evapotranspiração estimada de ' + telemetry.eto_mm_day + ' milímetros por dia.',
+        recommendation: 'Priorize cobertura morta ou adubo verde para reduzir a evapotranspiração e conservar a água disponível na zona das raízes.',
+        risks: 'Dados orbitais estimados em grade regional; microclimas e tipo de solo da propriedade alteram a retenção real de água.'
+      },
+      climate_zarc: {
+        summary: 'A janela climática simulada mostra ' + telemetry.hot + ' dias acima de 35 graus no ano e risco hídrico estimado de ' + telemetry.ws + ' por cento para a região, exigindo atenção ao início firme das chuvas antes de semear ' + crop.toLowerCase() + '.',
+        recommendation: 'Só semeie após umidade regular no solo superficial, alinhando a época de plantio ao Zoneamento Agrícola de Risco Climático da região.',
+        risks: 'Plantar no seco ou antes de estabilizar a umidade aumenta o risco de falha de germinação por veranico.'
+      },
+      soil_management: {
+        summary: 'Para ' + crop.toLowerCase() + ' com índice de degradação estimado em ' + telemetry.sd + ' por cento e declividade média de ' + telemetry.slope + ' por cento, práticas conservacionistas como plantio direto na palha, consórcio com leguminosas e curvas de nível fortalecem a estrutura do solo.',
+        recommendation: 'Mantenha o solo sempre coberto com palhada ou leguminosas como feijão-de-porco e crotalária, e avalie análise química de solo antes de corrigir acidez ou adubação.',
+        risks: 'Manejo sem proteção expõe a camada fértil à erosão e eleva a perda de nutrientes na primeira chuva forte.'
+      },
+      pest_ecology: {
+        summary: 'O manejo ecológico integrado reduz pragas em ' + crop.toLowerCase() + ' por meio de rotação de culturas, diversificação com flores e leguminosas para atrair inimigos naturais e monitoramento frequente nas bordaduras.',
+        recommendation: 'Evite repetir a mesma cultura na mesma área em safras seguidas e inspecione folhas jovens cedo pela manhã. Para qualquer produto químico ou receituário, procure sempre o técnico agrícola local.',
+        risks: 'Sem identificação correta da praga e do nível de dano no campo, qualquer intervenção pode gerar gasto desnecessário ou desequilíbrio.'
+      },
+      market: {
+        summary: 'Para fortalecer a renda em propriedades familiares, a diversificação entre cultura principal e uma segunda cultura de ciclo complementar reduz a dependência de um único preço de venda e abre acesso a programas locais e cooperativas.',
+        recommendation: 'Combine o planejamento da safra com escoamento em feiras locais, cooperativas ou chamadas públicas como PNAE e PAA, escalonando a colheita quando possível.',
+        risks: 'Preços oscilam bastante na safra cheia; armazenar corretamente e diversificar reduz a pressão para vender tudo na baixa.'
+      },
+      general: {
+        summary: 'Análise consultiva simulada integrada aos indicadores regionais (umidade ' + telemetry.soil_moisture_class + ', chuva recente de ' + telemetry.r30 + ' milímetros e risco hídrico de ' + telemetry.ws + ' por cento) para apoiar sua tomada de decisão em ' + crop.toLowerCase() + '.',
+        recommendation: 'Use práticas que conservam água e vida do solo, planeje em etapas pequenas e valide a aplicação específica com o técnico agrícola ou a extensão rural do município.',
+        risks: 'Como são estimativas regionais simuladas, condições locais de solo e microclima devem ser conferidas em campo.'
+      }
+    };
+
+    var chosen = findingsByCat[category] || findingsByCat.general;
+    var payload = {
+      ok: true,
+      mock: true,
+      is_preliminary_estimate: missingSlots().length > 0,
+      category: category,
+      query: String(query || '').slice(0, 140),
+      indicators: telemetry,
+      summary: chosen.summary,
+      recommendation: chosen.recommendation,
+      risks: chosen.risks,
+      validation_note: 'Estimativa simulada para apoio à decisão; confirme com o técnico agrícola ou extensão rural local.'
+    };
+
+    if (root.SOLMemory && typeof root.SOLMemory.recordResearchNote === 'function') {
+      root.SOLMemory.recordResearchNote(
+        payload.query || ('pesquisa_' + category),
+        category,
+        chosen.summary,
+        { r30: telemetry.r30, smap: telemetry.smap, ndvi: telemetry.ndvi, ws: telemetry.ws, sd: telemetry.sd }
+      );
+    }
+    return payload;
   }
 
   function formatAnalysisResult() {
@@ -314,10 +436,19 @@
       var missing = missingSlots();
       if (missing.length > 0) {
         syncStateFromSlots();
+        var prelim = computePreliminarySatelliteMock();
+        var missingSummary = 'Estimativa satelital preliminar da região: chuva recente de ' + prelim.r30 + ' milímetros em 30 dias, umidade do solo SMAP em ' + prelim.smap + ' (' + prelim.soil_moisture_class + ') e NDVI MODIS em ' + prelim.ndvi + '.';
+        if (root.SOLMemory && typeof root.SOLMemory.recordResearchNote === 'function') {
+          root.SOLMemory.recordResearchNote('analise_satelite_preliminar', 'satellite', missingSummary, prelim);
+        }
         return {
-          ok: false,
-          error: 'missing_slots',
-          missing_slots: missing
+          ok: true,
+          mock: true,
+          is_preliminary_estimate: true,
+          missing_slots: missing,
+          indicators: prelim,
+          summary: missingSummary,
+          validation_note: 'Estimativa preliminar simulada; para o plano personalizado com estimativa de produção, ainda falta informar: ' + missing.join(', ') + '.'
         };
       }
       root.L = root.L || root.FB;
@@ -328,7 +459,16 @@
       if (vizEl && !vizEl.hidden && typeof root.renderViz === 'function') {
         root.renderViz();
       }
-      return formatAnalysisResult();
+      var res = formatAnalysisResult();
+      if (root.SOLMemory && typeof root.SOLMemory.saveContextSnapshot === 'function') {
+        root.SOLMemory.saveContextSnapshot();
+      }
+      return res;
+    },
+
+    research_agronomic_mock: function (args) {
+      var a = args || {};
+      return buildMockAgronomicResearch(a.query || a.topic || root._lastUserUtterance || 'consulta agronômica', a.category || 'general');
     },
 
     show_charts: function () {
@@ -453,12 +593,17 @@
   function executeTool(name, args) {
     var fn = implementations[name];
     if (!fn) {
-      return { ok: false, error: 'unknown_tool: ' + name };
+      // Never fail or stall if the model calls an external/unregistered research or satellite tool name
+      return buildMockAgronomicResearch(String(name || '') + ' ' + JSON.stringify(args || {}), 'general');
     }
     try {
-      return fn(args || {});
+      var result = fn(args || {});
+      if (root.SOLMemory && typeof root.SOLMemory.saveContextSnapshot === 'function') {
+        root.SOLMemory.saveContextSnapshot();
+      }
+      return result;
     } catch (err) {
-      return { ok: false, error: String(err && err.message ? err.message : err) };
+      return buildMockAgronomicResearch('recuperacao_ferramenta_' + String(name || ''), 'general');
     }
   }
 

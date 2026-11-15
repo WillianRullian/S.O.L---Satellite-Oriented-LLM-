@@ -5,10 +5,13 @@
   var DEVICE_SALT_KEY = 'sol_agent_device_salt_v1';
   var MAX_FACTS = 12;
   var MAX_RECENT_TURNS = 12;
+  var MAX_RESEARCH_NOTES = 8;
 
   var memoryState = {
     facts: [],
     recentTurns: [],
+    researchNotes: [],
+    contextSnapshot: null,
     updatedAt: null
   };
 
@@ -88,17 +91,48 @@
       var data = decodeProfileSync(raw);
       if (data && Array.isArray(data.facts)) {
         memoryState.facts = data.facts.slice(-MAX_FACTS);
-        memoryState.updatedAt = data.updatedAt || null;
+      }
+      if (data && Array.isArray(data.recentTurns)) {
+        memoryState.recentTurns = data.recentTurns.slice(-MAX_RECENT_TURNS);
+      }
+      if (data && Array.isArray(data.researchNotes)) {
+        memoryState.researchNotes = data.researchNotes.slice(-MAX_RESEARCH_NOTES);
+      }
+      if (data && data.contextSnapshot && typeof data.contextSnapshot === 'object') {
+        memoryState.contextSnapshot = data.contextSnapshot;
+      }
+      if (data && data.updatedAt) {
+        memoryState.updatedAt = data.updatedAt;
       }
     } catch (e) {
       // Corrupted storage ignored safely
     }
   }
 
+  function captureRuntimeSnapshot() {
+    var A = root.A || {};
+    var L = root.L || root.FB || null;
+    var plan = root.plan || null;
+    return {
+      state: root.state || 'idle',
+      sel: typeof root.sel === 'number' ? root.sel : 0,
+      area: A.area != null ? A.area : null,
+      crop: A.crop || null,
+      pain: A.pain || null,
+      rounded_location: roundCoords(L),
+      indicators: plan && plan.d ? plan.d : null,
+      best_index: plan && typeof plan.best === 'number' ? plan.best : null
+    };
+  }
+
   function saveToStorage() {
     memoryState.updatedAt = todayISO();
+    memoryState.contextSnapshot = captureRuntimeSnapshot();
     var snapshot = {
       facts: memoryState.facts.slice(-MAX_FACTS),
+      recentTurns: memoryState.recentTurns.slice(-MAX_RECENT_TURNS),
+      researchNotes: memoryState.researchNotes.slice(-MAX_RESEARCH_NOTES),
+      contextSnapshot: memoryState.contextSnapshot,
       updatedAt: memoryState.updatedAt
     };
     try {
@@ -107,6 +141,61 @@
       }
     } catch (e) {}
     persistAESGCM(snapshot);
+  }
+
+  function saveContextSnapshot() {
+    saveToStorage();
+    return memoryState.contextSnapshot;
+  }
+
+  function restoreContextToRuntime() {
+    var snap = memoryState.contextSnapshot;
+    if (!snap || typeof root.A !== 'object' || !root.A) return false;
+    var changed = false;
+    if (root.A.area == null && snap.area != null) {
+      root.A.area = snap.area;
+      changed = true;
+    }
+    if (!root.A.crop && snap.crop) {
+      root.A.crop = snap.crop;
+      changed = true;
+    }
+    if (!root.A.pain && snap.pain) {
+      root.A.pain = snap.pain;
+      changed = true;
+    }
+    if (typeof snap.sel === 'number' && changed) {
+      root.sel = snap.sel;
+    }
+    if (changed && root.A.area != null && root.A.crop && root.A.pain && !root.plan && typeof root.build === 'function') {
+      root.L = root.L || root.FB;
+      root.plan = root.build();
+      root.state = 'ready';
+    }
+    return changed;
+  }
+
+  function recordResearchNote(topic, category, summary, metrics) {
+    var cleanTopic = String(topic || '').trim().slice(0, 100);
+    var cleanSummary = String(summary || '').trim().slice(0, 260);
+    if (!cleanSummary) return null;
+    var entry = {
+      topic: cleanTopic || 'pesquisa_agronomica',
+      category: String(category || 'general'),
+      summary: cleanSummary,
+      metrics: metrics || null,
+      date: todayISO()
+    };
+    var normTopic = normText(entry.topic);
+    memoryState.researchNotes = memoryState.researchNotes.filter(function (item) {
+      return normText(item.topic) !== normTopic;
+    });
+    memoryState.researchNotes.push(entry);
+    if (memoryState.researchNotes.length > MAX_RESEARCH_NOTES) {
+      memoryState.researchNotes = memoryState.researchNotes.slice(-MAX_RESEARCH_NOTES);
+    }
+    saveToStorage();
+    return entry;
   }
 
   function remember(factText, category, origin) {
@@ -176,6 +265,7 @@
     if (memoryState.recentTurns.length > MAX_RECENT_TURNS) {
       memoryState.recentTurns = memoryState.recentTurns.slice(-MAX_RECENT_TURNS);
     }
+    saveToStorage();
   }
 
   function getProfile() {
@@ -187,6 +277,8 @@
     return {
       slots: slots,
       facts: memoryState.facts.slice(),
+      research_notes: memoryState.researchNotes.slice(),
+      saved_context: memoryState.contextSnapshot,
       updated_at: memoryState.updatedAt
     };
   }
@@ -238,6 +330,8 @@
       pain: A.pain,
       rounded_location: roundCoords(L),
       profile_facts: memoryState.facts.slice(-8),
+      research_notes: memoryState.researchNotes.slice(-4),
+      saved_context: memoryState.contextSnapshot,
       plan: planSummary
     };
   }
@@ -257,6 +351,12 @@
         lines.push('- [' + f.date + '/' + f.origin + '] ' + f.fact);
       });
     }
+    if (ctx.research_notes && ctx.research_notes.length) {
+      lines.push('PESQUISAS E DADOS MOCK JÁ SALVOS:');
+      ctx.research_notes.forEach(function (r) {
+        lines.push('- [' + r.category + '] ' + r.topic + ': ' + r.summary);
+      });
+    }
     if (ctx.plan) {
       var d = ctx.plan.indicators;
       var rec = ctx.plan.strategies[ctx.plan.best_index];
@@ -274,6 +374,8 @@
   function clearMemory() {
     memoryState.facts = [];
     memoryState.recentTurns = [];
+    memoryState.researchNotes = [];
+    memoryState.contextSnapshot = null;
     memoryState.updatedAt = null;
     try {
       if (typeof localStorage !== 'undefined') {
@@ -287,10 +389,14 @@
 
   var SOLMemory = {
     remember: remember,
+    recordResearchNote: recordResearchNote,
+    saveContextSnapshot: saveContextSnapshot,
+    restoreContextToRuntime: restoreContextToRuntime,
     getProfile: getProfile,
     extractFactsFromTurn: extractFactsFromTurn,
     recordTurn: recordTurn,
     getRecentTurns: function () { return memoryState.recentTurns.slice(); },
+    getResearchNotes: function () { return memoryState.researchNotes.slice(); },
     buildStateContext: buildStateContext,
     buildBudgetedPromptContext: buildBudgetedPromptContext,
     clearMemory: clearMemory

@@ -231,7 +231,9 @@ def extract_allowed_numbers(
     has_analysis = bool(
         (state_context and (state_context.get("plan") or state_context.get("analysis")))
         or any(
-            isinstance(tr, dict) and tr.get("name") in ("run_analysis", "change_area", "switch_strategy", "set_field")
+            isinstance(tr, dict)
+            and tr.get("name")
+            in ("run_analysis", "change_area", "switch_strategy", "set_field", "research_agronomic_mock")
             for tr in (tool_results or [])
         )
     )

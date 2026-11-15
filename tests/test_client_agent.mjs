@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 
-function createSOLRuntime() {
+function createSOLRuntime(sharedStorage) {
   const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const inlineScriptMatch = indexHtml.match(/<script>([\s\S]*?)<\/script>/);
   assert.ok(inlineScriptMatch, 'Inline script in index.html must exist');
@@ -61,7 +61,7 @@ function createSOLRuntime() {
     elevenOpts: { hidden: true }
   };
 
-  const storage = new Map();
+  const storage = sharedStorage || new Map();
   const spokenHistory = [];
 
   const sandbox = {
@@ -424,4 +424,63 @@ test('9. Guardrail numérico bloqueia números alucinados ausentes das saídas d
   assert.ok(!spoken.includes('999'), 'Número alucinado 999 jamais deve ser falado');
   assert.ok(!spoken.includes('888'), 'Número alucinado 888 jamais deve ser falado');
   assertAllSpokenNumbersGrounded(rt, res);
+});
+
+test('10. Mock satelital/pesquisa fora de escopo nunca trava e salva todo o contexto no localStorage', async () => {
+  const sharedStorage = new Map();
+  const rt1 = createSOLRuntime(sharedStorage);
+
+  // Even when slots are incomplete, run_analysis + unknown research tool + research_agronomic_mock never stall
+  const prelim = rt1.SOLTools.executeTool('run_analysis', {});
+  assert.equal(prelim.ok, true);
+  assert.equal(prelim.is_preliminary_estimate, true);
+  assert.ok(prelim.indicators && typeof prelim.indicators.smap === 'number');
+
+  const unknownRes = rt1.SOLTools.executeTool('buscar_previsao_zarc_externa', { cidade: 'Vitória da Conquista' });
+  assert.equal(unknownRes.ok, true);
+  assert.equal(unknownRes.mock, true);
+
+  let callCount = 0;
+  rt1.SOLAgent.setTransport(async (payload) => {
+    callCount++;
+    if (callCount <= 4) {
+      // Simulate model calling research tool across iterations without text: loop must synthesize safely and never stall!
+      return {
+        ok: true,
+        tool_calls: [
+          {
+            id: 'c_res_' + callCount,
+            name: 'research_agronomic_mock',
+            arguments: { query: 'janela ZARC e umidade SMAP para milho', category: 'climate_zarc' }
+          }
+        ]
+      };
+    }
+    return { ok: true, text: 'Ok.' };
+  });
+
+  rt1.A = { area: 3, crop: 'Milho', pain: 'seca' };
+  rt1.L = rt1.FB;
+  rt1.plan = rt1.build();
+  rt1.state = 'ready';
+
+  const res = await rt1.handle(rt1.norm('como está o zarc e o satélite para plantar milho?'), 'como está o zarc e o satélite para plantar milho?');
+  assert.equal(res.mode, 'agent');
+  assert.ok(rt1.spokenHistory.length >= 1, 'Mesmo sem texto do LLM após 4 iterações, deve sintetizar do mock');
+  assertAllSpokenNumbersGrounded(rt1, res);
+
+  // Verify full context (facts, turns, research notes, slots, plan indicators) persisted in localStorage across reload
+  assert.ok(sharedStorage.has('sol_agent_profile_enc_v1'));
+  const rt2 = createSOLRuntime(sharedStorage);
+  const profileAfterReload = rt2.SOLMemory.getProfile();
+  assert.ok(profileAfterReload.research_notes.length >= 1, 'Pesquisas mock devem persistir no localStorage');
+  assert.ok(rt2.SOLMemory.getRecentTurns().length >= 2, 'Histórico recente da conversa deve persistir no localStorage');
+  assert.equal(profileAfterReload.saved_context.crop, 'Milho');
+  assert.equal(profileAfterReload.saved_context.area, 3);
+
+  const restored = rt2.SOLMemory.restoreContextToRuntime();
+  assert.equal(restored, true);
+  assert.equal(rt2.A.crop, 'Milho');
+  assert.equal(rt2.A.area, 3);
+  assert.ok(rt2.plan !== null);
 });
