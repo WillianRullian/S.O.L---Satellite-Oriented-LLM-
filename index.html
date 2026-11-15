@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>S.O.L. — by B.I.G. Tech</title>
+<style>
+:root{--bg:#f6f5ef;--s1:#fff;--s2:#ecebe2;--ink:#121a13;--mut:#6a7566;--pri:#1f7a3a;--acc:#d9820b;--ln:#e0dfd3;--on:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b100c;--s1:#131a14;--s2:#1b241c;--ink:#f3f6ef;--mut:#8d9c8a;--pri:#7bd88f;--acc:#ffb84d;--ln:#243024;--on:#1a1100;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b100c;--s1:#131a14;--s2:#1b241c;--ink:#f3f6ef;--mut:#8d9c8a;--pri:#7bd88f;--acc:#ffb84d;--ln:#243024;--on:#1a1100;color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:#050805;color:var(--ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;justify-content:center;align-items:center}
+#app{width:100%;max-width:410px;height:100%;max-height:800px;background:var(--bg);display:flex;flex-direction:column;border-radius:32px;overflow:hidden;border:1px solid var(--ln);position:relative}
+@media(max-width:430px){#app{border-radius:0;max-height:none;border:0}}
+.top{height:56px;display:flex;align-items:center;justify-content:center;padding-top:10px}
+.eye{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:600}
+svg.ic{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+main{flex:1;display:flex;flex-direction:column;padding:6px 22px;overflow-y:auto;overflow-x:hidden}
+.stage{flex:1;min-height:260px;display:grid;place-items:center;transition:all .4s}
+.v .stage{flex:none;min-height:0;height:150px}
+
+/* ===== S.O.L. — esfera solar ===== */
+.orb{--z:1;position:relative;width:150px;height:150px;border-radius:50%;
+ background:radial-gradient(circle at 38% 34%,color-mix(in srgb,var(--acc) 22%,#fff) 0,color-mix(in srgb,var(--acc) 70%,#fff) 20%,var(--acc) 52%,color-mix(in srgb,var(--acc) 58%,var(--bg)) 100%);
+ box-shadow:0 0 28px 6px color-mix(in srgb,var(--acc) 65%,transparent),0 0 70px 24px color-mix(in srgb,var(--acc) 30%,transparent),0 0 140px 50px color-mix(in srgb,var(--acc) 14%,transparent);
+ animation:breathe 4.2s ease-in-out infinite;transition:filter .3s}
+.orb::before{content:"";position:absolute;inset:-48px;border-radius:50%;
+ background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--acc) 60%,transparent) 0 2.5deg,transparent 2.5deg 14deg);
+ -webkit-mask:radial-gradient(circle,transparent 44%,#000 52%,transparent 71%);mask:radial-gradient(circle,transparent 44%,#000 52%,transparent 71%);
+ opacity:.7;animation:spin 46s linear infinite}
+.orb::after{content:"";position:absolute;inset:-24px;border-radius:50%;z-index:-1;filter:blur(9px);
+ background:conic-gradient(color-mix(in srgb,var(--acc) 40%,transparent),transparent 22%,color-mix(in srgb,var(--acc) 30%,transparent) 48%,transparent 72%,color-mix(in srgb,var(--acc) 40%,transparent));
+ animation:spin 20s linear infinite reverse}
+.v .orb{--z:.45}
+@keyframes breathe{0%,100%{transform:scale(var(--z))}50%{transform:scale(calc(var(--z)*1.05))}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.orb[data-m="talk"]{animation:talk .85s ease-in-out infinite}
+.orb[data-m="talk"]::before{opacity:1;animation-duration:9s}
+@keyframes talk{0%,100%{transform:scale(var(--z));filter:brightness(1)}50%{transform:scale(calc(var(--z)*1.17));filter:brightness(1.28)}}
+.orb[data-m="listen"]{animation:listen 1.5s ease-out infinite;filter:brightness(.95)}
+@keyframes listen{
+ 0%{transform:scale(calc(var(--z)*.96));box-shadow:0 0 28px 6px color-mix(in srgb,var(--acc) 65%,transparent),0 0 70px 24px color-mix(in srgb,var(--acc) 30%,transparent),0 0 0 0 color-mix(in srgb,var(--acc) 55%,transparent)}
+ 100%{transform:scale(calc(var(--z)*.96));box-shadow:0 0 28px 6px color-mix(in srgb,var(--acc) 65%,transparent),0 0 70px 24px color-mix(in srgb,var(--acc) 30%,transparent),0 0 0 90px transparent}}
+
+/* ===== rodapé: legenda + único botão ===== */
+.foot{display:flex;flex-direction:column;align-items:center;gap:10px;padding:8px 22px 24px}
+.hint{text-align:center;font-size:15px;color:var(--mut);min-height:44px;line-height:1.4;max-width:320px}
+.mic{width:84px;height:84px;border-radius:50%;border:0;background:var(--acc);color:var(--on);display:grid;place-items:center;cursor:pointer}
+.mic.on{animation:mp 1.1s infinite}
+@keyframes mp{50%{transform:scale(1.08)}}
+
+/* ===== gráficos sob demanda ===== */
+#viz{padding-bottom:10px;animation:in .35s ease}
+@keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.hero{margin-top:12px;padding:20px;border-radius:28px;background:var(--s1);border:1.5px solid var(--acc)}
+.hero.l{border-color:var(--ln)}
+.pill{display:inline-block;background:var(--acc);color:var(--on);font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:20px;padding:5px 11px}
+.hero h2{font-size:26px;line-height:1.12;margin:12px 0 6px;letter-spacing:-.02em}
+.hero p{margin:0;color:var(--mut);font-size:15px;line-height:1.45}
+.bar{display:flex;align-items:center;gap:12px;margin-top:14px;font-size:14px;font-weight:600}
+.bar span{width:78px;color:var(--mut)}
+.bar div{flex:1;height:8px;border-radius:8px;background:var(--s2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--pri);border-radius:8px;transition:width .6s}
+.bar em{font-style:normal;width:76px;text-align:right;font-size:13px;color:var(--mut)}
+.src{text-align:center;font-size:12px;color:var(--mut);margin-top:14px;line-height:1.5}
+</style>
+</head>
+<body>
+<div id="app">
+<div class="top"><span class="eye">S.O.L. · B.I.G. Tech</span></div>
+<main>
+ <section class="stage"><div class="orb" id="orb" data-m="idle"></div></section>
+ <section id="viz" hidden></section>
+</main>
+<div class="foot">
+ <div class="hint" id="hint">Toque no microfone para falar com o S.O.L.</div>
+ <button class="mic" id="mic" onclick="micTap()" aria-label="Falar com o S.O.L."><svg class="ic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+</div>
+</div>
+<script>
+/* ================= estado ================= */
+var A={area:null,crop:null,pain:null},L=null,plan=null,sel=0,state='idle',started=false,rec=null,tk=0,nsp=0,locP=null;
+var FB={lat:-14.9,lon:-40.8};                       // fallback sem GPS (região aproximada do Nordeste)
+var ss=window.speechSynthesis;
+function $(i){return document.getElementById(i)}
+function norm(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
+function msg(t){$('hint').textContent=t}
+function mode(m){$('orb').dataset.m=m;$('mic').classList.toggle('on',m=='listen')}
+function K(x,h){return Math.max(5,Math.min(h||100,Math.round(x)))}
+function lvl(x){return x<35?'baixo':x<60?'médio':'alto'}
+
+/* ================= voz: falar ================= */
+function say(t,cb){var my=++tk;if(rec){try{rec.abort()}catch(e){}}
+ if(!ss){msg(t);setTimeout(function(){if(my==tk&&cb)cb()},Math.min(9000,1500+t.length*55));return}
+ ss.cancel();var u=new SpeechSynthesisUtterance(t);u.lang='pt-BR';u.rate=.95;mode('talk');msg('S.O.L. falando…');
+ var end=function(){if(my!=tk)return;mode('idle');if(cb)cb()};u.onend=end;u.onerror=end;ss.speak(u)}
+function seq(a,cb){if(!a.length){if(cb)cb();return}say(a[0],function(){seq(a.slice(1),cb)})}
+function again(){listen()}
+
+/* ================= voz: ouvir ================= */
+function listen(){var R=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!R){msg('Este navegador não ouve voz. Use Chrome, Edge ou Safari.');return}
+ tk++;if(ss)ss.cancel();if(rec){try{rec.abort()}catch(e){}}
+ var r=rec=new R();r.lang='pt-BR';r.interimResults=true;mode('listen');msg('Ouvindo… pode falar');
+ r.onresult=function(e){var x=e.results[e.results.length-1],t=x[0].transcript;if(!x.isFinal){msg('“'+t+'”');return}if(rec==r){nsp=0;handle(norm(t),t)}};
+ r.onerror=function(e){if(rec!=r)return;
+  if(e.error=='not-allowed'||e.error=='service-not-allowed'){msg('Microfone bloqueado. Libere o microfone no navegador.');mode('idle');rec=null}
+  else if(e.error=='no-speech'){if(++nsp<3)setTimeout(function(){if(rec==r)listen()},300);else{msg('Toque no microfone para falar.');mode('idle')}}};
+ r.onend=function(){if(rec==r&&$('orb').dataset.m=='listen')mode('idle')};
+ try{r.start()}catch(e){}}
+function micTap(){if(!started)start();else listen()}
+
+/* ================= início + localização ================= */
+var FEAT='Eu sou o S.O.L. Uso satélites da NASA para analisar a sua terra. Você pode me dizer o tamanho da lavoura, o que planta e sua maior dificuldade. Pode mudar a área quando quiser, dizendo, por exemplo: mudar área para dez hectares. E se quiser ver os gráficos de produção, água e solo, peça: mostrar gráficos.';
+function start(){started=true;state='intro';
+ locP=new Promise(function(res){if(!navigator.geolocation)return res(null);
+  navigator.geolocation.getCurrentPosition(function(p){res({lat:p.coords.latitude,lon:p.coords.longitude})},function(){res(null)},{timeout:8000,maximumAge:6e5})});
+ seq(['Oi! Eu sou o S.O.L., da B.I.G. Tech. Eu uso satélites da NASA para analisar a sua terra e dizer o que plantar.',
+  'Você pode me dizer o tamanho da sua lavoura e o que planta. Pode mudar a área quando quiser, é só falar: mudar área para dez hectares. E se quiser ver os gráficos de produção na tela, é só pedir.'],
+  function(){locP.then(function(l){L=l||FB;
+   seq([l?'Já peguei a localização da sua terra.':'Não consegui o GPS, então vou usar uma região aproximada do Nordeste.'],next)})})}
+
+/* ================= diálogo guiado por voz ================= */
+function next(){var q;
+ if(A.area==null){state='area';q='Qual o tamanho da sua lavoura? Pode falar em hectares, tarefas ou metros. Por exemplo: dois hectares.'}
+ else if(!A.crop){state='crop';q='E o que você planta hoje? Milho, feijão, mandioca ou hortaliças?'}
+ else if(!A.pain){state='pain';q='Qual é a sua maior dificuldade? Falta de chuva, praga, terra fraca ou preço pra vender?'}
+ else return analyze();
+ say(q,again)}
+function miss(raw){var h={area:'Diga, por exemplo: dois hectares, ou dez tarefas.',crop:'Diga milho, feijão, mandioca ou hortaliças.',pain:'Diga falta de chuva, praga, terra fraca ou preço.',ready:'Você pode pedir: mostrar gráficos, mudar área, ou recomeçar.'}[state]||'';
+ say('Não entendi. '+h,again)}
+function handle(t,raw){
+ if(/esconde|fech|ocult|sumir|limpa/.test(t)){viz(false);return say('Pronto, tela limpa.',again)}
+ if(/grafic|mostr|ver (o )?plano|producao|barra|na tela/.test(t)){
+  if(!plan)return say('Primeiro preciso entender sua terra.',next);
+  viz(true);return say('Aqui estão os gráficos da sua terra.',again)}
+ if(/recome|do zero|reinici/.test(t)){A={area:null,crop:null,pain:null};plan=null;viz(false);return say('Vamos de novo.',next)}
+ if(/ajuda|o que voce faz|como funciona/.test(t))return say(FEAT,again);
+ if(/(mud|alter|troc|corrig)\w*.*(area|tamanho|terra|lavoura)/.test(t)){var v=parseArea(t);
+  if(v>0){A.area=v;return next()}A.area=null;return say('Claro.',next)}
+ if(plan&&/outro|proxim/.test(t)){sel=(sel+1)%3;var X=plan.S[sel];if(!$('viz').hidden)renderViz();
+  return seq([X.t+'. '+X.why,'Eu estimo '+fmtP(A.crop,X.prod,1)+' por safra.'],again)}
+ if(plan&&/repet|de novo|ouvir|explic|detalh|diagnos/.test(t))return seq(plan.chunks,again);
+ var g=fill(t);
+ if(!g.length){if(state=='intro'||state=='idle')return next();return miss(raw)}
+ next()}
+
+/* ================= extração de respostas ================= */
+var W={um:1,uma:1,dois:2,duas:2,tres:3,quatro:4,cinco:5,seis:6,sete:7,oito:8,nove:9,dez:10,onze:11,doze:12,quinze:15,vinte:20,trinta:30,quarenta:40,cinquenta:50,sessenta:60,cem:100,cento:100,duzentos:200,quinhentos:500,mil:1000};
+function parseArea(t){var m=t.match(/(\d+(?:[.,]\d+)?)/),v=null,u=(t.match(/hectare|\bha\b|tarefa|metro|m2|alqueire/)||['hectare'])[0];
+ if(m)v=parseFloat(m[1].replace(',','.'));
+ else{var s=0,f=false;
+  t.split(/\W+/).some(function(w){
+   if(/^(hectare|tarefa|metro|alqueire|ha|m2)/.test(w))return f;
+   if(W[w]!=null){f=true;if(w=='mil')s=(s||1)*1000;else s+=W[w]}else if(f&&w!='e')return true;
+   return false});
+  if(f)v=s;else if(/\bmeio\b|\bmeia\b/.test(t))v=.5}
+ if(v==null)return null;
+ if(/ e (meio|meia)\b/.test(t))v+=.5;
+ var k=/tarefa/.test(u)?.4356:/metro|m2/.test(u)?1e-4:/alqueire/.test(u)?2.42:1;return v*k}
+function fill(t){var g=[],v;
+ if(state=='area'||/hectare|\bha\b|tarefa|metro|m2|alqueire/.test(t)){v=parseArea(t);if(v>0&&v<1e5){A.area=v;g.push('area')}}
+ var c=/feij/.test(t)?'Feijão':/milho/.test(t)?'Milho':/mandioca|macaxeira|aipim/.test(t)?'Mandioca':/horta|verdura|legume/.test(t)?'Hortaliças':null;
+ if(c){A.crop=c;g.push('crop')}
+ if(state=='pain'||(state=='ready'&&/dificuldade|problema|maior/.test(t))){
+  var p=/chuva|seca|agua|estiagem/.test(t)?'seca':/praga|doenca|lagarta|bicho|inseto/.test(t)?'praga':/fraca|solo|adubo|cansad/.test(t)?'solo':/preco|venda|vender|mercado|dinheiro/.test(t)?'mercado':null;
+  if(p){A.pain=p;g.push('pain')}}
+ return g}
+
+/* ================= formatação falada ================= */
+function fmtA(ha){if(ha>=1){var n=(Math.round(ha*10)/10).toString().replace('.',',');return n+(ha<1.05?' hectare':' hectares')}return Math.round(ha*1e4)+' metros quadrados'}
+function fmtP(c,t,long){if(c=='Milho'||c=='Feijão'){var s=Math.round(t*1000/60);return s+(long?' sacas de 60 quilos':' sacas')}
+ if(t<1)return Math.round(t*1000)+(long?' quilos':' kg');return t.toFixed(1).replace('.',',')+(long?' toneladas':' t')}
+
+/* ================= pipeline NASA (simulado, determinístico por coordenada + área) ================= */
+function pipe(){var s=Math.round((L.lat+90)*100)*7919+Math.round((L.lon+180)*100)+A.crop.length*13;
+ var r=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296},R=function(a,b){return a+(b-a)*r()};
+ var d={px:Math.round(A.area*1e4/900),rad:Math.round(Math.sqrt(A.area*1e4/Math.PI))};
+ d.rain=Math.round(R(520,1150));d.tmax=+R(29,35).toFixed(1);
+ d.smap=+R(.12,.34).toFixed(2);
+ d.ndvi=+R(.35,.75).toFixed(2);
+ d.r30=Math.round(R(8,95));d.ext=Math.round(R(1,8));
+ d.hot=Math.round(R(15,70));
+ d.bare=Math.round(R(2,6));
+ d.slope=Math.round(R(2,14));
+ d.dev=Math.round((d.r30/(d.rain/12)-1)*100);
+ d.ws=K(70-(d.smap-.12)/.22*40-(d.rain-520)/630*20+d.hot*.3,95);
+ d.sd=K(d.bare*8+d.slope*2.2+d.ext*2+(.75-d.ndvi)*40,95);
+ return d}
+
+/* ================= modelo preditivo + motor generativo de perfil ================= */
+function build(){var d=pipe(),cr=A.crop,cl=cr.toLowerCase(),ha=A.area,
+ Y={Milho:2.2,Feijão:.8,Mandioca:11,Hortaliças:14}[cr],
+ N={Milho:['feijão',1],Feijão:['milho',0],Mandioca:['feijão-guandu',1],Hortaliças:['feijão-de-corda',1]}[cr],n=N[0],
+ bs=Math.max(.35,1-d.ws*.0045-d.sd*.002);
+ var S=[{p:'Como é hoje',t:'Só '+cl+', como sempre',w:K(100-d.ws),s:K(100-d.sd),c:92,m:1,l:'Hoje'},
+  {p:'Rotação',t:cr+', depois '+n,w:K(100-d.ws*.85),s:K(100-d.sd+22),c:72,m:1+d.sd*.0018+.04,l:'Rotação'},
+  {p:'Adubo verde',t:cr+' com adubo verde',w:K(100-d.ws*.55),s:K(100-d.sd+16),c:58,m:1+d.ws*.0012+.02,l:'Adubo verde'}];
+ S.forEach(function(x){x.prod=Y*bs*x.m*ha});
+ var mx=Math.max.apply(0,S.map(function(x){return x.prod})),
+  Wt={seca:[.5,.2,.1,.2],solo:[.2,.5,.1,.2],praga:[.15,.35,.15,.2],mercado:[.1,.15,.25,.5]}[A.pain];
+ S.forEach(function(x,i){x.sc=Wt[0]*x.w+Wt[1]*x.s+Wt[2]*x.c+Wt[3]*x.prod/mx*100+(A.pain=='praga'&&i==1?10:0)});
+ var b=S[1].sc>=S[2].sc?1:2,B=S[b],C=S[0];
+ S[1].why=N[1]?'O '+n+' deixa adubo de graça na terra, o nitrogênio, e quebra o ciclo das pragas.':'O '+n+' aproveita o adubo que o feijão deixou e quebra o ciclo das pragas.';
+ S[2].why='A cobertura segura a umidade e protege a terra da chuva forte.';
+ S[0].why='Não gasta nada a mais, mas a terra vai cansando.';
+ var how=b==1?'Plante o '+n+' logo depois de colher, e deixe a palha no chão.':'Plante crotalária ou feijão-de-porco entre as safras, e deixe a palha cobrindo a terra.',
+  dev=d.dev<-25?'bem menos que o normal':d.dev>25?'mais que o normal':'perto do normal',
+  sm=d.smap<.18?'baixa':d.smap<.26?'regular':'boa',
+  dif={seca:'Você falou da falta de chuva. E faz sentido: o risco de falta de água na sua terra está '+lvl(d.ws)+'.',
+   praga:'Sobre as pragas: plantar a mesma coisa no mesmo lugar todo ano deixa o bicho se criar. Mudar a cultura quebra esse ciclo.',
+   solo:'Sobre a terra fraca: ela fica uns '+d.bare+' meses por ano descoberta, sem planta, e isso gasta o solo. O risco de a chuva levar a terra embora é '+lvl(d.sd)+'.',
+   mercado:'Sobre o preço: uma segunda cultura na mesma terra traz mais uma entrada de dinheiro, sem precisar de mais chão.'}[A.pain];
+ var chunks=['Pelo que os satélites me mostram, sua lavoura de '+cl+' tem '+fmtA(ha)+'. Nos últimos 30 dias choveu '+d.r30+' milímetros, '+dev+'. A umidade da terra está '+sm+', e o calor passou de 35 graus em uns '+d.hot+' dias do ano.',
+  dif,
+  'Meu conselho é: '+B.t+'. '+B.why+' '+how,
+  'Para '+fmtA(ha)+', eu estimo uns '+fmtP(cr,B.prod,1)+' por safra, contra '+fmtP(cr,C.prod,1)+' se continuar do mesmo jeito.',
+  'Isso é uma ajuda para você decidir. Converse sempre com o técnico agrícola da sua região.',
+  'Se quiser ver os gráficos da produção, água e solo na tela, é só me pedir.'];
+ return {d:d,S:S,best:b,chunks:chunks}}
+
+function analyze(){var had=!!plan;L=L||FB;plan=build();sel=plan.best;state='ready';if(!$('viz').hidden)renderViz();
+ var c=plan.chunks,pre=had?'Certo. Refiz as previsões para '+fmtA(A.area)+' de '+A.crop.toLowerCase()+'.':'Pronto, olhei sua terra nos satélites da NASA.';
+ seq(had?[pre,c[2],c[3],c[5]]:[pre,c[0],c[1],c[2],c[3],c[4],c[5]],again)}
+
+/* ================= gráficos só sob demanda ================= */
+function viz(on){$('viz').hidden=!on;$('app').classList.toggle('v',on);if(on)renderViz()}
+function renderViz(){var P=plan,B=P.S[sel],mx=Math.max.apply(0,P.S.map(function(x){return x.prod})),lb=['Água','Terra','Custo'],vs=[B.w,B.s,B.c];
+ $('viz').innerHTML='<div class="hero"><span class="pill">'+(sel==P.best?'Melhor caminho':B.p)+'</span><h2>'+B.t+'</h2><p>'+B.why+'</p>'+
+  vs.map(function(v,i){return '<div class="bar"><span>'+lb[i]+'</span><div><i style="width:'+v+'%"></i></div><em>'+v+'%</em></div>'}).join('')+'</div>'+
+  '<div class="hero l"><span class="pill">Produção · '+fmtA(A.area)+'</span>'+
+  P.S.map(function(x){return '<div class="bar"><span>'+x.l+'</span><div><i style="width:'+Math.round(x.prod/mx*100)+'%"></i></div><em>'+fmtP(A.crop,x.prod)+'</em></div>'}).join('')+'</div>'+
+  '<div class="src">S.O.L. by B.I.G. Tech · NASA POWER · SMAP · GPM · MODIS · Landsat · ECOSTRESS · SRTM<br>Valores simulados neste protótipo. Confirme com o técnico agrícola.</div>'}
+</script>
+</body>
+</html>

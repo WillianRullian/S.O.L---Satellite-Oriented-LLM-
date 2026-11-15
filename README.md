@@ -192,7 +192,7 @@ saida:    texto falado (diagnostico + recomendacao + producao estimada)
 
 ```bash
 # 1. Clonar o repositorio (substitua pela URL real)
-git clone https://github.com/<organizacao>/sol.git
+git clone https://github.com/WillianRullian/S.O.L---Satellite-Oriented-LLM-.git
 cd sol
 
 # 2. Servir os arquivos localmente (opcao A: Python)
