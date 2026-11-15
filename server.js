@@ -27,15 +27,52 @@ function readJson(req) {
 }
 
 const server = http.createServer(async (req, res) => {
-  if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
+  const parsedUrl = new URL(req.url, `http://localhost:${PORT}`);
+  const pathname = parsedUrl.pathname;
+
+  if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
     const html = fs.readFileSync(path.join(__dirname, "index.html"));
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     return res.end(html);
   }
 
-  if (req.method === "GET" && req.url === "/api/health") {
+  if (req.method === "GET" && pathname === "/models.json") {
+    const modelsJson = fs.readFileSync(path.join(__dirname, "models.json"));
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    return res.end(modelsJson);
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/agent/")) {
+    const safeRel = path.normalize(pathname).replace(/^(\.\.(\/|\\|$))+/, "");
+    const filePath = path.join(__dirname, safeRel);
+    const agentDir = path.join(__dirname, "agent");
+    if (filePath.startsWith(agentDir) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
+      return res.end(fs.readFileSync(filePath));
+    }
+  }
+
+  if (req.method === "GET" && pathname === "/api/models") {
+    const modelsJson = fs.readFileSync(path.join(__dirname, "models.json"));
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    return res.end(modelsJson);
+  }
+
+  if (req.method === "GET" && pathname === "/api/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, elevenlabs: Boolean(process.env.ELEVENLABS_API_KEY) }));
+    return res.end(
+      JSON.stringify({
+        ok: true,
+        elevenlabs: Boolean(process.env.ELEVENLABS_API_KEY),
+        agent: true,
+        default_model: process.env.SOL_MODEL || "auto",
+      })
+    );
+  }
+
+  if (req.method === "POST" && pathname === "/api/agent/chat") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ ok: false, fallback: true, reason: "use_fastapi_or_offline_fallback" }));
   }
 
   if (req.method === "POST" && req.url === "/api/tts") {

@@ -352,6 +352,9 @@ function next(){var q;
 function miss(raw){var h={area:'Pode dizer, por exemplo: dois hectares, ou dez tarefas.',crop:'Pode dizer milho, feijão, mandioca ou hortaliças.',pain:'Pode dizer falta de chuva, praga, terra fraca ou preço.',ready:'Você pode me pedir: mostrar gráficos, mudar área, ou recomeçar.'}[state]||'';
  say('Opa, acho que não peguei direitinho. '+h,again)}
 function handle(t,raw){
+ if(window.SOLAgent)return window.SOLAgent.handle(t,raw,handleRules);
+ return handleRules(t,raw)}
+function handleRules(t,raw){
  if(/esconde|fech|ocult|sumir|limpa/.test(t)){viz(false);return say('Prontinho, tela limpa pra você!',again)}
  if(/grafic|mostr|ver (o )?plano|producao|barra|na tela/.test(t)){
   if(!plan)return say('Antes dos gráficos, me conta um pouquinho da sua terra!',next);
@@ -454,5 +457,9 @@ function renderViz(){var P=plan,B=P.S[sel],mx=Math.max.apply(0,P.S.map(function(
   P.S.map(function(x){return '<div class="bar"><span>'+x.l+'</span><div><i style="width:'+Math.round(x.prod/mx*100)+'%"></i></div><em>'+fmtP(A.crop,x.prod)+'</em></div>'}).join('')+'</div>'+
   '<div class="src">S.O.L. by B.I.G. Tech · NASA POWER · SMAP · GPM · MODIS · Landsat · ECOSTRESS · SRTM<br>Valores simulados neste protótipo. Confirme com o técnico agrícola.</div>'}
 </script>
+<script src="agent/prompts.js"></script>
+<script src="agent/memory.js"></script>
+<script src="agent/tools.js"></script>
+<script src="agent/loop.js"></script>
 </body>
 </html>
