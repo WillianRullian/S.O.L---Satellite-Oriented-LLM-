@@ -1,0 +1,28 @@
+{
+  "name": "s.o.l---satellite-oriented-llm-",
+  "version": "1.0.0",
+  "description": "**Assistente de Inteligência Artificial Preditiva e Generativa Guiado por Voz para Decisão Agrícola e Adaptação Climática**",
+  "main": "server.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "start": "node --env-file=.env.local server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WillianRullian/S.O.L---Satellite-Oriented-LLM-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/WillianRullian/S.O.L---Satellite-Oriented-LLM-/issues"
+  },
+  "homepage": "https://github.com/WillianRullian/S.O.L---Satellite-Oriented-LLM-#readme",
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.78.0"
+  }
+}
