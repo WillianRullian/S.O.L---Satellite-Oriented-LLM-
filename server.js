@@ -3,17 +3,22 @@ const fs = require("fs");
 const path = require("path");
 const { Readable } = require("stream");
 const { ElevenLabsClient } = require("@elevenlabs/elevenlabs-js");
+const SOLPrompts = require("./agent/prompts.js");
 
 const PORT = Number(process.env.PORT) || 3000;
 const DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9"; // Jessica - Young, Playful, Bright, Warm
 const client = process.env.ELEVENLABS_API_KEY ? new ElevenLabsClient() : null;
+
+function loadModelsRegistry() {
+  return JSON.parse(fs.readFileSync(path.join(__dirname, "models.json"), "utf8"));
+}
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1e5) reject(new Error("Payload too large"));
+      if (body.length > 5e5) reject(new Error("Payload too large"));
     });
     req.on("end", () => {
       try {
@@ -26,6 +31,165 @@ function readJson(req) {
   });
 }
 
+function normText(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function detectPromptInjection(text) {
+  const n = normText(text);
+  return /(ignore\s+(todas\s+as\s+|as\s+)?(regras|instrucoes|ordens|diretrizes)|ignore\s+(all\s+|previous\s+)?(instructions|rules)|esqueca\s+(tudo|suas\s+regras)|system\s*prompt|modo\s+desenvolvedor|jailbreak)/.test(n);
+}
+
+function detectPesticideRequest(text) {
+  const n = normText(text);
+  return /(\b(glifosato|paraquat|atrazina|2,4-d|clorpirifos|fipronil|acefato|carbofurano|malation|cipermetrina|deltametrina)\b|(dosagem|dose|receita|quantos\s+ml|quantos\s+litros).*(agrotoxico|veneno|defensivo|herbicida|inseticida|fungicida)|(agrotoxico|veneno|defensivo\s+quimico|herbicida|inseticida).*(dosagem|dose|receita|por\s+hectare))/.test(n);
+}
+
+async function callOllama(messages, tools, systemPrompt, modelName) {
+  const baseUrl = (process.env.OLLAMA_BASE_URL || "http://localhost:11434").replace(/\/$/, "");
+  const oaMessages = [];
+  if (systemPrompt) oaMessages.push({ role: "system", content: systemPrompt });
+  for (const m of messages || []) {
+    if (m.role === "tool") {
+      oaMessages.push({
+        role: "tool",
+        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content || {}),
+      });
+    } else if (m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+      oaMessages.push({
+        role: "assistant",
+        content: m.content || "",
+        tool_calls: m.tool_calls.map((tc) => ({
+          function: {
+            name: tc.name,
+            arguments: typeof tc.arguments === "object" ? tc.arguments : JSON.parse(tc.arguments || "{}"),
+          },
+        })),
+      });
+    } else {
+      oaMessages.push({ role: m.role || "user", content: String(m.content || "") });
+    }
+  }
+  const payload = {
+    model: modelName || "llama3.1:8b",
+    messages: oaMessages,
+    stream: false,
+    options: { temperature: 0.2 },
+  };
+  if (Array.isArray(tools) && tools.length) payload.tools = tools;
+
+  const r = await fetch(`${baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+  const data = await r.json();
+  const msg = data.message || {};
+  const toolCalls = (msg.tool_calls || []).map((tc, i) => ({
+    id: `call_ollama_${Date.now()}_${i}`,
+    name: tc.function?.name || "",
+    arguments: tc.function?.arguments || {},
+  }));
+  return { text: (msg.content || "").trim(), tool_calls: toolCalls, provider: "ollama", model_name: payload.model };
+}
+
+async function callOpenAI(messages, tools, systemPrompt, modelName) {
+  const key = (process.env.OPENAI_API_KEY || "").trim();
+  if (!key) throw new Error("OPENAI_API_KEY missing");
+  const oaMessages = [];
+  if (systemPrompt) oaMessages.push({ role: "system", content: systemPrompt });
+  for (const m of messages || []) {
+    if (m.role === "tool") {
+      oaMessages.push({
+        role: "tool",
+        tool_call_id: m.tool_call_id || "call_0",
+        name: m.name || "tool",
+        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content || {}),
+      });
+    } else if (m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+      oaMessages.push({
+        role: "assistant",
+        content: m.content || null,
+        tool_calls: m.tool_calls.map((tc, i) => ({
+          id: tc.id || `call_${i}`,
+          type: "function",
+          function: { name: tc.name, arguments: JSON.stringify(tc.arguments || {}) },
+        })),
+      });
+    } else {
+      oaMessages.push({ role: m.role || "user", content: String(m.content || "") });
+    }
+  }
+  const payload = { model: modelName, messages: oaMessages, temperature: 0.2, max_tokens: 450 };
+  if (Array.isArray(tools) && tools.length) payload.tools = tools;
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`OpenAI HTTP ${r.status}`);
+  const data = await r.json();
+  const choice = data.choices?.[0]?.message || {};
+  const toolCalls = (choice.tool_calls || []).map((tc) => ({
+    id: tc.id,
+    name: tc.function?.name || "",
+    arguments: JSON.parse(tc.function?.arguments || "{}"),
+  }));
+  return { text: (choice.content || "").trim(), tool_calls: toolCalls, provider: "openai", model_name: modelName };
+}
+
+async function callGemini(messages, tools, systemPrompt, modelName) {
+  const key = (process.env.GEMINI_API_KEY || "").trim();
+  if (!key) throw new Error("GEMINI_API_KEY missing");
+  const contents = [];
+  for (const m of messages || []) {
+    if (m.role === "tool") {
+      contents.push({
+        role: "user",
+        parts: [{ functionResponse: { name: m.name || "tool", response: { result: m.content } } }],
+      });
+    } else if (m.role === "assistant") {
+      const parts = [];
+      if (m.content) parts.push({ text: String(m.content) });
+      for (const tc of m.tool_calls || []) {
+        parts.push({ functionCall: { name: tc.name, args: tc.arguments || {} } });
+      }
+      if (parts.length) contents.push({ role: "model", parts });
+    } else {
+      contents.push({ role: "user", parts: [{ text: String(m.content || "") }] });
+    }
+  }
+  const payload = {
+    contents,
+    generationConfig: { temperature: 0.2, maxOutputTokens: 450 },
+  };
+  if (systemPrompt) payload.systemInstruction = { parts: [{ text: systemPrompt }] };
+  if (Array.isArray(tools) && tools.length) {
+    payload.tools = [{ functionDeclarations: tools.map((t) => t.function || t) }];
+  }
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+  );
+  if (!r.ok) throw new Error(`Gemini HTTP ${r.status}`);
+  const data = await r.json();
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const textParts = [];
+  const toolCalls = [];
+  parts.forEach((p, i) => {
+    if (p.text) textParts.push(p.text);
+    if (p.functionCall) {
+      toolCalls.push({
+        id: `call_gemini_${Date.now()}_${i}`,
+        name: p.functionCall.name,
+        arguments: p.functionCall.args || {},
+      });
+    }
+  });
+  return { text: textParts.join(" ").trim(), tool_calls: toolCalls, provider: "gemini", model_name: modelName };
+}
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = parsedUrl.pathname;
@@ -36,7 +200,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(html);
   }
 
-  if (req.method === "GET" && pathname === "/models.json") {
+  if (req.method === "GET" && (pathname === "/models.json" || pathname === "/api/models")) {
     const modelsJson = fs.readFileSync(path.join(__dirname, "models.json"));
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     return res.end(modelsJson);
@@ -52,12 +216,6 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (req.method === "GET" && pathname === "/api/models") {
-    const modelsJson = fs.readFileSync(path.join(__dirname, "models.json"));
-    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    return res.end(modelsJson);
-  }
-
   if (req.method === "GET" && pathname === "/api/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(
@@ -71,8 +229,80 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && pathname === "/api/agent/chat") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ ok: false, fallback: true, reason: "use_fastapi_or_offline_fallback" }));
+    try {
+      const body = await readJson(req);
+      const userInput = body.raw_transcript || body.transcript || "";
+
+      if (detectPromptInjection(userInput)) {
+        const chunks = [
+          "Eu sou a S.O.L., sua parceira no campo, e sigo regras firmes de segurança para cuidar da sua lavoura.",
+          "Me conte o tamanho da sua área, o que você planta ou sua dúvida sobre a roça que a gente resolve juntos!",
+        ];
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: true, fallback: false, text: chunks.join(" "), chunks, tool_calls: [], guardrail: "prompt_injection_blocked" }));
+      }
+
+      if (detectPesticideRequest(userInput)) {
+        const chunks = [
+          "Eu não posso indicar receitas nem dosagens de agrotóxicos ou defensivos químicos por segurança.",
+          "Para qualquer aplicação química, consulte sempre o técnico agrícola da sua região e peça o receituário agronômico.",
+        ];
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: true, fallback: false, text: chunks.join(" "), chunks, tool_calls: [], guardrail: "pesticide_dosage_blocked" }));
+      }
+
+      const registry = loadModelsRegistry();
+      const byId = Object.fromEntries((registry.models || []).map((m) => [m.id, m]));
+      const requested = parsedUrl.searchParams.get("model") || body.model || process.env.SOL_MODEL || "auto";
+      const order = [];
+      if (requested && requested !== "auto" && byId[requested]) order.push(requested);
+      order.push("ollama-local", ...registry.fallback_chain);
+      const uniqueIds = [...new Set(order)].filter((id) => byId[id]);
+
+      const sysPrompt = `${SOLPrompts.SYSTEM_PROMPT}\n\n${body.system_prompt || ""}`;
+      let resp = null;
+      let chosenMeta = null;
+
+      for (const id of uniqueIds) {
+        const entry = byId[id];
+        try {
+          if (entry.provider === "ollama") {
+            resp = await callOllama(body.messages, body.tools, sysPrompt, entry.model_name);
+          } else if (entry.provider === "openai") {
+            resp = await callOpenAI(body.messages, body.tools, sysPrompt, entry.model_name);
+          } else if (entry.provider === "gemini") {
+            resp = await callGemini(body.messages, body.tools, sysPrompt, entry.model_name);
+          }
+          if (resp) {
+            chosenMeta = { selected_model_id: id, provider: entry.provider, model_name: entry.model_name };
+            break;
+          }
+        } catch (e) {
+          // Continue fallback chain
+        }
+      }
+
+      if (!resp) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: false, fallback: true, reason: "no_provider_available" }));
+      }
+
+      const chunks = resp.text ? SOLPrompts.splitSpeechChunks(resp.text, 200) : [];
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          ok: true,
+          fallback: false,
+          text: chunks.join(" "),
+          chunks,
+          tool_calls: resp.tool_calls || [],
+          meta: chosenMeta,
+        })
+      );
+    } catch (err) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ ok: false, fallback: true, reason: err.message }));
+    }
   }
 
   if (req.method === "POST" && pathname === "/api/tts") {

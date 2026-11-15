@@ -104,7 +104,7 @@ class OpenAIProvider(BaseLLMProvider):
             "Authorization": f"Bearer {settings.openai_api_key}",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers=headers,

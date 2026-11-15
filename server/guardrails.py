@@ -211,14 +211,14 @@ def extract_allowed_numbers(
         _collect_numbers_from_data(tool_results, allowed)
     if state_context:
         # Exclude coordinate numbers or internal timestamps unless in analysis/area
-        for key in ("area", "area_ha", "plan", "analysis", "indicators", "strategies"):
+        for key in ("area", "area_ha", "area_spoken", "plan", "analysis", "indicators", "strategies"):
             if key in state_context:
                 _collect_numbers_from_data(state_context[key], allowed)
     # If analysis data is present, standard domain constants from build() (30 days window, 35°C threshold, 60kg sack) are valid
     has_analysis = bool(
         (state_context and (state_context.get("plan") or state_context.get("analysis")))
         or any(
-            isinstance(tr, dict) and tr.get("name") in ("run_analysis", "change_area", "switch_strategy")
+            isinstance(tr, dict) and tr.get("name") in ("run_analysis", "change_area", "switch_strategy", "set_field")
             for tr in (tool_results or [])
         )
     )

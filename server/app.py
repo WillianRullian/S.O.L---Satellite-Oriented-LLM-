@@ -62,6 +62,24 @@ def _build_turn_payload(
     if not grounding_ok and resp_text:
         # Block ungrounded numeric claims: if tool_results have deterministic chunks, use them; otherwise request fallback
         fallback_chunks = (req.state_context.get("plan") or {}).get("chunks") or []
+        if not fallback_chunks:
+            for tr in reversed(req.tool_results):
+                res_obj = tr.get("result") or {}
+                if isinstance(res_obj, dict) and res_obj.get("chunks"):
+                    fallback_chunks = res_obj["chunks"]
+                    break
+                if isinstance(res_obj, dict) and res_obj.get("missing_slots"):
+                    next_s = res_obj["missing_slots"][0]
+                    area_str = res_obj.get("area_formatted") or ""
+                    prefix = f"Anotei {area_str}. " if area_str else ""
+                    q_map = {
+                        "crop": f"{prefix}E o que você planta hoje: milho, feijão, mandioca ou hortaliças?",
+                        "pain": f"Anotei {res_obj.get('crop') or 'sua cultura'}. E o que mais tem te preocupado na lavoura ultimamente: falta de chuva, praga, terra fraca ou preço?",
+                        "area": "Me conta: qual é o tamanho da sua lavoura?",
+                    }
+                    if next_s in q_map:
+                        fallback_chunks = [q_map[next_s]]
+                        break
         if fallback_chunks:
             chunks = [c for c in fallback_chunks[:3]]
             resp_text = " ".join(chunks)

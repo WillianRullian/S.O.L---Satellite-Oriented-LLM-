@@ -99,7 +99,7 @@ class GeminiProvider(BaseLLMProvider):
         if tools:
             payload["tools"] = _convert_tools_to_gemini(tools)
 
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()

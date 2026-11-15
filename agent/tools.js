@@ -11,8 +11,8 @@
           type: 'object',
           properties: {
             area_ha: {
-              description: 'Tamanho da área em hectares (número) ou texto com unidade (ex.: "3 tarefas", "2 hectares e meio", "5000 metros").',
-              anyOf: [{ type: 'number' }, { type: 'string' }]
+              type: 'string',
+              description: 'Tamanho da área em hectares ou texto com unidade (ex.: "2", "3 tarefas", "2 hectares e meio", "5000 metros").'
             },
             crop: {
               type: 'string',
@@ -212,20 +212,33 @@
       var updated = [];
 
       if (a.area_ha !== undefined && a.area_ha !== null && a.area_ha !== '') {
-        if (typeof a.area_ha === 'number' && a.area_ha > 0) {
-          root.state = 'area';
-          root.fill(norm(String(a.area_ha) + ' hectares'));
-          if (root.A.area == null) root.A.area = a.area_ha;
-          updated.push('area');
-        } else {
-          var areaStr = norm(String(a.area_ha));
-          var parsed = typeof root.parseArea === 'function' ? root.parseArea(areaStr) : null;
-          if (parsed != null && parsed > 0 && parsed < 1e5) {
-            root.A.area = parsed;
+        var utterNorm = norm(root._lastUserUtterance || '');
+        var rawAreaArg = norm(String(a.area_ha));
+        var hasExplicitUnit = /hectare|\bha\b|tarefa|metro|m2|alqueire/.test(rawAreaArg);
+        var utterHasSpecialUnit = /tarefa|metro|m2|alqueire/.test(utterNorm);
+
+        if (!hasExplicitUnit && utterHasSpecialUnit && typeof root.parseArea === 'function') {
+          var fromUtter = root.parseArea(utterNorm);
+          if (fromUtter != null && fromUtter > 0 && fromUtter < 1e5) {
+            root.A.area = fromUtter;
+            updated.push('area');
+          }
+        }
+        if (updated.indexOf('area') === -1) {
+          if (typeof a.area_ha === 'number' && a.area_ha > 0) {
+            root.state = 'area';
+            root.fill(norm(String(a.area_ha) + ' hectares'));
+            if (root.A.area == null) root.A.area = a.area_ha;
             updated.push('area');
           } else {
-            root.state = 'area';
-            if (root.fill(areaStr).indexOf('area') !== -1) updated.push('area');
+            var parsed = typeof root.parseArea === 'function' ? root.parseArea(rawAreaArg) : null;
+            if (parsed != null && parsed > 0 && parsed < 1e5) {
+              root.A.area = parsed;
+              updated.push('area');
+            } else {
+              root.state = 'area';
+              if (root.fill(rawAreaArg).indexOf('area') !== -1) updated.push('area');
+            }
           }
         }
       }
@@ -248,6 +261,10 @@
       }
 
       var missing = syncStateFromSlots();
+      if (missing.length === 0) {
+        var analysis = implementations.run_analysis();
+        return Object.assign({ updated: updated, missing_slots: [] }, analysis);
+      }
       var fmtA = typeof root.fmtA === 'function' ? root.fmtA : function (x) { return x + ' ha'; };
       return {
         ok: true,

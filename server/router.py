@@ -1,4 +1,5 @@
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import load_models_registry, settings
@@ -34,6 +35,7 @@ class ModelRouter:
             "openai": OpenAIProvider(),
             "ollama": OllamaProvider(),
         }
+        self._cooldown_until: Dict[str, float] = {}
 
     def resolve_model_entry(self, model_id_or_name: str) -> Optional[Dict[str, Any]]:
         if not model_id_or_name:
@@ -115,11 +117,15 @@ class ModelRouter:
         )
         attempted: List[Dict[str, str]] = []
 
+        now = time.time()
         for entry in candidates:
             prov_name = entry["provider"]
             provider = self.providers.get(prov_name)
             if not provider or not provider.is_configured():
                 attempted.append({"id": entry["id"], "status": "unconfigured"})
+                continue
+            if self._cooldown_until.get(prov_name, 0) > now and len(candidates) > 1:
+                attempted.append({"id": entry["id"], "status": "cooldown"})
                 continue
             try:
                 resp = await provider.generate(
@@ -129,6 +135,7 @@ class ModelRouter:
                     model_name=entry["model_name"],
                     temperature=temperature,
                 )
+                self._cooldown_until.pop(prov_name, None)
                 meta = {
                     "selected_model_id": entry["id"],
                     "provider": prov_name,
@@ -139,6 +146,9 @@ class ModelRouter:
                 }
                 return resp, meta
             except Exception as exc:
+                # Put cloud provider on 120s cooldown if auth/quota error occurs
+                if prov_name != "ollama" and "HTTPStatusError" in type(exc).__name__:
+                    self._cooldown_until[prov_name] = time.time() + 120.0
                 attempted.append(
                     {"id": entry["id"], "status": f"error: {type(exc).__name__}"}
                 )

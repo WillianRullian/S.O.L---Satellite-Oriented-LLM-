@@ -24,7 +24,7 @@
       throw new Error('fetch unavailable');
     }
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    var timer = controller ? setTimeout(function () { controller.abort(); }, 6500) : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, 60000) : null;
     try {
       var modelParam = payload.model ? '?model=' + encodeURIComponent(payload.model) : '';
       var res = await fetch('/api/agent/chat' + modelParam, {
@@ -67,7 +67,7 @@
       var tr = toolResults[i];
       var res = tr && tr.result;
       if (!res) continue;
-      if (tr.name === 'run_analysis' && Array.isArray(res.chunks) && res.chunks.length) {
+      if ((tr.name === 'run_analysis' || tr.name === 'set_field') && Array.isArray(res.chunks) && res.chunks.length) {
         return res.chunks.slice(0, 4);
       }
       if (tr.name === 'change_area' && Array.isArray(res.chunks) && res.chunks.length) {
@@ -107,6 +107,7 @@
     }
 
     var userUtterance = String(raw || t || '').trim();
+    root._lastUserUtterance = userUtterance;
     var chosenModel = getSelectedModel();
     var messages = memory ? memory.getRecentTurns() : [];
     messages.push({ role: 'user', content: userUtterance });
