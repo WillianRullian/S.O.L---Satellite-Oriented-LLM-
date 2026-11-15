@@ -114,6 +114,9 @@ def sanitize_spoken_text(text: str) -> str:
     if not text:
         return ""
     cleaned = EMOJI_RE.sub("", text)
+    # Normalize dotted acronyms so sentence splitters and TTS do not break on internal periods
+    cleaned = re.sub(r"\bS\.O\.L\.?", "SOL", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bB\.I\.G\.?", "BIG", cleaned, flags=re.IGNORECASE)
     # Remove markdown formatting characters (*, _, #, `, ~, >, [ ], ( ))
     cleaned = re.sub(r"[*_#`~>|]", "", cleaned)
     cleaned = re.sub(r"^\s*[-•+]\s+", "", cleaned, flags=re.MULTILINE)
@@ -127,10 +130,10 @@ def split_speech_chunks(text: str, max_chars: int = 200) -> List[str]:
     if not cleaned:
         return []
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned) if s.strip()]
-    chunks: List[str] = []
+    raw_chunks: List[str] = []
     for sent in sentences:
         if len(sent) <= max_chars:
-            chunks.append(sent)
+            raw_chunks.append(sent)
         else:
             # Split by commas/semicolons/conjunctions to stay under max_chars
             clauses = [c.strip() for c in re.split(r"(?<=[,;:])\s+", sent) if c.strip()]
@@ -143,13 +146,13 @@ def split_speech_chunks(text: str, max_chars: int = 200) -> List[str]:
                 else:
                     if not current.endswith((".", "!", "?")):
                         current += "."
-                    chunks.append(current)
+                    raw_chunks.append(current)
                     current = clause
             if current:
                 if len(current) <= max_chars:
                     if not current.endswith((".", "!", "?")):
                         current += "."
-                    chunks.append(current)
+                    raw_chunks.append(current)
                 else:
                     # Hard word-boundary wrap if a single clause exceeds max_chars
                     words = current.split(" ")
@@ -160,13 +163,21 @@ def split_speech_chunks(text: str, max_chars: int = 200) -> List[str]:
                         elif len(buf) + 1 + len(w) <= max_chars - 1:
                             buf = f"{buf} {w}"
                         else:
-                            chunks.append(buf + ".")
+                            raw_chunks.append(buf + ".")
                             buf = w
                     if buf:
                         if not buf.endswith((".", "!", "?")):
                             buf += "."
-                        chunks.append(buf)
-    return chunks
+                        raw_chunks.append(buf)
+
+    # Pack consecutive short sentences into chunks up to max_chars to minimize TTS round-trips
+    packed: List[str] = []
+    for ch in raw_chunks:
+        if packed and len(packed[-1]) + 1 + len(ch) <= max_chars:
+            packed[-1] = f"{packed[-1]} {ch}"
+        else:
+            packed.append(ch)
+    return packed
 
 
 # 4. Strict Numeric Grounding Verification

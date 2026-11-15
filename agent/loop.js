@@ -4,6 +4,50 @@
   var MAX_ITERATIONS = 4;
   var customTransport = null;
 
+  function inferImplicitToolCalls(t, userUtterance) {
+    var norm = String(t || '').toLowerCase();
+    var inferred = [];
+    if (/esconde|fech|ocult|sumir|limpa/.test(norm)) {
+      inferred.push({ id: 'auto_hide', name: 'hide_charts', arguments: {} });
+      return inferred;
+    }
+    if (/grafic|mostr|ver (o )?plano|barra|na tela/.test(norm)) {
+      inferred.push({ id: 'auto_show', name: 'show_charts', arguments: {} });
+      return inferred;
+    }
+    if (/(mud|alter|troc|corrig)\w*.*(area|tamanho|terra|lavoura)/.test(norm)) {
+      inferred.push({ id: 'auto_chg', name: 'change_area', arguments: { texto: userUtterance } });
+      return inferred;
+    }
+    if (root.plan && /\b(outro|outra\s+opcao|proxim)\b/.test(norm)) {
+      inferred.push({ id: 'auto_sw', name: 'switch_strategy', arguments: {} });
+      return inferred;
+    }
+    var args = {};
+    var hasSlot = false;
+    if (typeof root.parseArea === 'function' && (root.state === 'area' || /hectare|\bha\b|tarefa|metro|m2|alqueire/.test(norm))) {
+      var v = root.parseArea(norm);
+      if (v != null && v > 0 && v < 1e5) {
+        args.area_ha = userUtterance;
+        hasSlot = true;
+      }
+    }
+    var c = /feij/.test(norm) ? 'Feijão' : /milho/.test(norm) ? 'Milho' : /mandioca|macaxeira|aipim/.test(norm) ? 'Mandioca' : /horta|verdura|legume/.test(norm) ? 'Hortaliças' : null;
+    if (c) {
+      args.crop = c;
+      hasSlot = true;
+    }
+    var p = /chuva|seca|agua|estiagem/.test(norm) ? 'seca' : /praga|doenca|lagarta|bicho|inseto/.test(norm) ? 'praga' : /fraca|solo|adubo|cansad/.test(norm) ? 'solo' : /preco|venda|vender|mercado|dinheiro/.test(norm) ? 'mercado' : null;
+    if (p && (root.state === 'pain' || !root.A || !root.A.pain || /dificuldade|problema|preocup/.test(norm))) {
+      args.main_difficulty = p;
+      hasSlot = true;
+    }
+    if (hasSlot) {
+      inferred.push({ id: 'auto_set', name: 'set_field', arguments: args });
+    }
+    return inferred;
+  }
+
   function getSelectedModel() {
     if (root.SOL_FORCE_MODEL) return String(root.SOL_FORCE_MODEL);
     try {
@@ -24,7 +68,7 @@
       throw new Error('fetch unavailable');
     }
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    var timer = controller ? setTimeout(function () { controller.abort(); }, 60000) : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, 10000) : null;
     try {
       var modelParam = payload.model ? '?model=' + encodeURIComponent(payload.model) : '';
       var res = await fetch('/api/agent/chat' + modelParam, {
@@ -89,7 +133,15 @@
       if ((tr.name === 'ask_user' || tr.name === 'set_field') && res.missing_slots && res.missing_slots.length) {
         var nextSlot = res.slot || res.missing_slots[0];
         var askRes = root.SOLTools.executeTool('ask_user', { slot: nextSlot });
-        if (askRes && askRes.suggested_question) return [askRes.suggested_question];
+        if (askRes && askRes.suggested_question) {
+          var prefix = '';
+          if (nextSlot === 'crop' && root.A && root.A.area != null && typeof root.fmtA === 'function') {
+            prefix = 'Anotei ' + root.fmtA(root.A.area) + '. ';
+          } else if (nextSlot === 'pain' && root.A && root.A.crop) {
+            prefix = 'Anotei ' + root.A.crop.toLowerCase() + '! ';
+          }
+          return [prefix + askRes.suggested_question];
+        }
       }
     }
     return null;
@@ -140,6 +192,14 @@
 
         lastMeta = response.meta || null;
         var calls = Array.isArray(response.tool_calls) ? response.tool_calls : [];
+        if (calls.length === 0 && iter === 0 && !response.guardrail) {
+          var implicit = inferImplicitToolCalls(t, userUtterance);
+          if (implicit.length > 0) {
+            calls = implicit;
+            response.text = '';
+            response.chunks = [];
+          }
+        }
 
         if (calls.length > 0) {
           messages.push({
@@ -165,8 +225,16 @@
             });
           }
 
-          // If the model only requested tools without final text, continue next iteration
+          // If the model only requested tools without final text, check if a 2nd LLM round-trip is needed
           if (!response.text && (!response.chunks || !response.chunks.length)) {
+            var isOpenQuestion = /[?]|\b(por\s+que|como|e\s+se|posso|quando|qual|quais|explic|ndvi|smap|modis|ecostress|evapotranspiracao|deficit)\b/i.test(userUtterance);
+            if (!customTransport && !isOpenQuestion) {
+              var fastChunks = synthesizeDeterministicFromTools(toolResults);
+              if (fastChunks && fastChunks.length) {
+                finalChunks = fastChunks;
+                break;
+              }
+            }
             continue;
           }
         }

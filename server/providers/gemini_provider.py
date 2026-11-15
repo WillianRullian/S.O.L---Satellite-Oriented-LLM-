@@ -10,6 +10,12 @@ from ..config import settings
 from .base import BaseLLMProvider, ProviderResponse
 
 
+GEMINI_MODEL_MAP = {
+    "gemini-2.5-flash": "gemini-3.5-flash-lite",
+    "gemini-2.5-pro": "gemini-3.5-flash",
+}
+
+
 def _convert_tools_to_gemini(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     if not tools:
         return []
@@ -33,32 +39,45 @@ def _convert_messages_to_gemini(messages: List[Dict[str, Any]]) -> List[Dict[str
         if role == "system":
             continue
         if role == "tool":
-            contents.append(
-                {
-                    "role": "user",
-                    "parts": [
-                        {
-                            "functionResponse": {
-                                "name": msg.get("name", "tool"),
-                                "response": {"result": msg.get("content", "")},
-                            }
-                        }
-                    ],
+            raw_content = msg.get("content", "")
+            if isinstance(raw_content, str):
+                try:
+                    parsed_res = json.loads(raw_content)
+                except ValueError:
+                    parsed_res = {"result": raw_content}
+            else:
+                parsed_res = raw_content
+            if not isinstance(parsed_res, dict):
+                parsed_res = {"result": parsed_res}
+            fn_part = {
+                "functionResponse": {
+                    "name": msg.get("name", "tool"),
+                    "response": parsed_res,
                 }
-            )
+            }
+            if (
+                contents
+                and contents[-1].get("role") == "user"
+                and contents[-1].get("parts")
+                and "functionResponse" in contents[-1]["parts"][0]
+            ):
+                contents[-1]["parts"].append(fn_part)
+            else:
+                contents.append({"role": "user", "parts": [fn_part]})
         elif role == "assistant":
             parts: List[Dict[str, Any]] = []
             if msg.get("content"):
                 parts.append({"text": str(msg["content"])})
             for tc in msg.get("tool_calls", []) or []:
-                parts.append(
-                    {
-                        "functionCall": {
-                            "name": tc.get("name"),
-                            "args": tc.get("arguments", {}),
-                        }
+                fc_part: Dict[str, Any] = {
+                    "functionCall": {
+                        "name": tc.get("name"),
+                        "args": tc.get("arguments", {}),
                     }
-                )
+                }
+                if tc.get("thoughtSignature"):
+                    fc_part["thoughtSignature"] = tc["thoughtSignature"]
+                parts.append(fc_part)
             if parts:
                 contents.append({"role": "model", "parts": parts})
         else:
@@ -83,23 +102,28 @@ class GeminiProvider(BaseLLMProvider):
         if not self.is_configured():
             raise RuntimeError("GEMINI_API_KEY not configured")
 
+        actual_model = GEMINI_MODEL_MAP.get(model_name, model_name)
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model_name}:generateContent?key={settings.gemini_api_key}"
+            f"{actual_model}:generateContent?key={settings.gemini_api_key}"
         )
+        gen_cfg: Dict[str, Any] = {
+            "temperature": temperature,
+            "maxOutputTokens": 350,
+        }
+        if "lite" not in actual_model:
+            gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+
         payload: Dict[str, Any] = {
             "contents": _convert_messages_to_gemini(messages),
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": 450,
-            },
+            "generationConfig": gen_cfg,
         }
         if system_prompt:
             payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
         if tools:
             payload["tools"] = _convert_tools_to_gemini(tools)
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
@@ -120,18 +144,19 @@ class GeminiProvider(BaseLLMProvider):
                             args = json.loads(args)
                         except ValueError:
                             args = {}
-                    tool_calls.append(
-                        {
-                            "id": f"call_{uuid.uuid4().hex[:8]}",
-                            "name": fc.get("name", ""),
-                            "arguments": args or {},
-                        }
-                    )
+                    tc_item: Dict[str, Any] = {
+                        "id": f"call_{uuid.uuid4().hex[:8]}",
+                        "name": fc.get("name", ""),
+                        "arguments": args or {},
+                    }
+                    if "thoughtSignature" in part:
+                        tc_item["thoughtSignature"] = part["thoughtSignature"]
+                    tool_calls.append(tc_item)
 
         return ProviderResponse(
             text=" ".join(text_parts).strip(),
             tool_calls=tool_calls,
             provider=self.provider_name,
-            model_name=model_name,
+            model_name=actual_model,
             raw=data,
         )

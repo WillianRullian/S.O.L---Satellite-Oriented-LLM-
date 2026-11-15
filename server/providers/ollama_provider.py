@@ -80,7 +80,7 @@ class OllamaProvider(BaseLLMProvider):
         if tools:
             payload["tools"] = _convert_tools_to_openai(tools)
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=12.0) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code == 404:
                 tags_resp = await client.get(f"{settings.ollama_base_url}/api/tags")

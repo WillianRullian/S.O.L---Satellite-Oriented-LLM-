@@ -31,6 +31,8 @@
     if (!text) return '';
     return String(text)
       .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1FA00}-\u{1FAFF}]/gu, '')
+      .replace(/\bS\.O\.L\.?/gi, 'SOL')
+      .replace(/\bB\.I\.G\.?/gi, 'BIG')
       .replace(/[*_#`~>|]/g, '')
       .replace(/^\s*[-•+]\s+/gm, '')
       .replace(/^\s*\d+[.)]\s+/gm, '')
@@ -89,7 +91,16 @@
         }
       }
     });
-    return chunks;
+
+    var packed = [];
+    chunks.forEach(function (ch) {
+      if (packed.length && packed[packed.length - 1].length + 1 + ch.length <= limit) {
+        packed[packed.length - 1] += ' ' + ch;
+      } else {
+        packed.push(ch);
+      }
+    });
+    return packed;
   }
 
   function collectAllowedNumbers(obj, set) {

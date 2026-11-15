@@ -5,9 +5,24 @@ const { Readable } = require("stream");
 const { ElevenLabsClient } = require("@elevenlabs/elevenlabs-js");
 const SOLPrompts = require("./agent/prompts.js");
 
+// Load .env and .env.local automatically if present
+for (const envFile of [".env", ".env.local"]) {
+  const fullPath = path.join(__dirname, envFile);
+  if (fs.existsSync(fullPath)) {
+    const content = fs.readFileSync(fullPath, "utf8");
+    for (const line of content.split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (m && !process.env[m[1]]) {
+        process.env[m[1]] = m[2].replace(/^['"]|['"]$/g, "").trim();
+      }
+    }
+  }
+}
+
 const PORT = Number(process.env.PORT) || 3000;
 const DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9"; // Jessica - Young, Playful, Bright, Warm
 const client = process.env.ELEVENLABS_API_KEY ? new ElevenLabsClient() : null;
+const providerCooldownUntil = {};
 
 function loadModelsRegistry() {
   return JSON.parse(fs.readFileSync(path.join(__dirname, "models.json"), "utf8"));
@@ -139,37 +154,65 @@ async function callOpenAI(messages, tools, systemPrompt, modelName) {
   return { text: (choice.content || "").trim(), tool_calls: toolCalls, provider: "openai", model_name: modelName };
 }
 
+const GEMINI_MODEL_MAP = {
+  "gemini-2.5-flash": "gemini-3.5-flash-lite",
+  "gemini-2.5-pro": "gemini-3.5-flash",
+};
+
 async function callGemini(messages, tools, systemPrompt, modelName) {
   const key = (process.env.GEMINI_API_KEY || "").trim();
   if (!key) throw new Error("GEMINI_API_KEY missing");
+  const actualModel = GEMINI_MODEL_MAP[modelName] || modelName;
   const contents = [];
   for (const m of messages || []) {
     if (m.role === "tool") {
-      contents.push({
-        role: "user",
-        parts: [{ functionResponse: { name: m.name || "tool", response: { result: m.content } } }],
-      });
+      let parsedRes = m.content;
+      if (typeof parsedRes === "string") {
+        try {
+          parsedRes = JSON.parse(parsedRes);
+        } catch {
+          parsedRes = { result: parsedRes };
+        }
+      }
+      if (!parsedRes || typeof parsedRes !== "object" || Array.isArray(parsedRes)) {
+        parsedRes = { result: parsedRes };
+      }
+      const fnPart = {
+        functionResponse: { name: m.name || "tool", response: parsedRes },
+      };
+      const prev = contents[contents.length - 1];
+      if (prev && prev.role === "user" && prev.parts?.[0]?.functionResponse) {
+        prev.parts.push(fnPart);
+      } else {
+        contents.push({ role: "user", parts: [fnPart] });
+      }
     } else if (m.role === "assistant") {
       const parts = [];
       if (m.content) parts.push({ text: String(m.content) });
       for (const tc of m.tool_calls || []) {
-        parts.push({ functionCall: { name: tc.name, args: tc.arguments || {} } });
+        const fcPart = { functionCall: { name: tc.name, args: tc.arguments || {} } };
+        if (tc.thoughtSignature) fcPart.thoughtSignature = tc.thoughtSignature;
+        parts.push(fcPart);
       }
       if (parts.length) contents.push({ role: "model", parts });
     } else {
       contents.push({ role: "user", parts: [{ text: String(m.content || "") }] });
     }
   }
+  const genCfg = { temperature: 0.2, maxOutputTokens: 350 };
+  if (!actualModel.includes("lite")) {
+    genCfg.thinkingConfig = { thinkingBudget: 0 };
+  }
   const payload = {
     contents,
-    generationConfig: { temperature: 0.2, maxOutputTokens: 450 },
+    generationConfig: genCfg,
   };
   if (systemPrompt) payload.systemInstruction = { parts: [{ text: systemPrompt }] };
   if (Array.isArray(tools) && tools.length) {
     payload.tools = [{ functionDeclarations: tools.map((t) => t.function || t) }];
   }
   const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${actualModel}:generateContent?key=${key}`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
   );
   if (!r.ok) throw new Error(`Gemini HTTP ${r.status}`);
@@ -180,14 +223,16 @@ async function callGemini(messages, tools, systemPrompt, modelName) {
   parts.forEach((p, i) => {
     if (p.text) textParts.push(p.text);
     if (p.functionCall) {
-      toolCalls.push({
+      const tcItem = {
         id: `call_gemini_${Date.now()}_${i}`,
         name: p.functionCall.name,
         arguments: p.functionCall.args || {},
-      });
+      };
+      if (p.thoughtSignature) tcItem.thoughtSignature = p.thoughtSignature;
+      toolCalls.push(tcItem);
     }
   });
-  return { text: textParts.join(" ").trim(), tool_calls: toolCalls, provider: "gemini", model_name: modelName };
+  return { text: textParts.join(" ").trim(), tool_calls: toolCalls, provider: "gemini", model_name: actualModel };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -253,32 +298,37 @@ const server = http.createServer(async (req, res) => {
 
       const registry = loadModelsRegistry();
       const byId = Object.fromEntries((registry.models || []).map((m) => [m.id, m]));
-      const requested = parsedUrl.searchParams.get("model") || body.model || process.env.SOL_MODEL || "auto";
+      const requested = (parsedUrl.searchParams.get("model") || body.model || process.env.SOL_MODEL || "auto").trim();
       const order = [];
       if (requested && requested !== "auto" && byId[requested]) order.push(requested);
-      order.push("ollama-local", ...registry.fallback_chain);
+      order.push("gemini-flash", "gemini-pro", "openai-mini", "openai-flagship", "ollama-local");
       const uniqueIds = [...new Set(order)].filter((id) => byId[id]);
 
       const sysPrompt = `${SOLPrompts.SYSTEM_PROMPT}\n\n${body.system_prompt || ""}`;
       let resp = null;
       let chosenMeta = null;
+      const now = Date.now();
 
       for (const id of uniqueIds) {
         const entry = byId[id];
+        if ((providerCooldownUntil[entry.provider] || 0) > now && uniqueIds.length > 1) {
+          continue;
+        }
         try {
-          if (entry.provider === "ollama") {
-            resp = await callOllama(body.messages, body.tools, sysPrompt, entry.model_name);
+          if (entry.provider === "gemini") {
+            resp = await callGemini(body.messages, body.tools, sysPrompt, entry.model_name);
           } else if (entry.provider === "openai") {
             resp = await callOpenAI(body.messages, body.tools, sysPrompt, entry.model_name);
-          } else if (entry.provider === "gemini") {
-            resp = await callGemini(body.messages, body.tools, sysPrompt, entry.model_name);
+          } else if (entry.provider === "ollama") {
+            resp = await callOllama(body.messages, body.tools, sysPrompt, entry.model_name);
           }
           if (resp) {
-            chosenMeta = { selected_model_id: id, provider: entry.provider, model_name: entry.model_name };
+            delete providerCooldownUntil[entry.provider];
+            chosenMeta = { selected_model_id: id, provider: entry.provider, model_name: resp.model_name || entry.model_name };
             break;
           }
         } catch (e) {
-          // Continue fallback chain
+          providerCooldownUntil[entry.provider] = Date.now() + 120000;
         }
       }
 

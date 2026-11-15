@@ -8,16 +8,17 @@
     "ollama-local"
   ],
   "routing_policy": {
-    "simple_turn_default": "ollama-local",
-    "simple_turn_cloud_fallback": "gemini-flash",
+    "simple_turn_default": "gemini-flash",
+    "simple_turn_cloud_fallback": "ollama-local",
     "reasoning_turn_default": "gemini-pro",
-    "reasoning_turn_secondary": "openai-flagship"
+    "reasoning_turn_secondary": "gemini-flash"
   },
   "models": [
     {
       "id": "gemini-flash",
       "provider": "gemini",
-      "model_name": "gemini-2.5-flash",
+      "model_name": "gemini-3.5-flash-lite",
+      "aliases": ["gemini-2.5-flash", "gemini-flash-latest"],
       "relative_cost": "low",
       "cost_score": 1,
       "expected_latency_ms": 650,
@@ -29,10 +30,11 @@
     {
       "id": "gemini-pro",
       "provider": "gemini",
-      "model_name": "gemini-2.5-pro",
+      "model_name": "gemini-3.5-flash",
+      "aliases": ["gemini-2.5-pro", "gemini-pro-latest"],
       "relative_cost": "medium",
       "cost_score": 3,
-      "expected_latency_ms": 1200,
+      "expected_latency_ms": 950,
       "supports_tools": true,
       "local": false,
       "tier": "reasoning",

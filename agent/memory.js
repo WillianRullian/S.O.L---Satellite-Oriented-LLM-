@@ -261,7 +261,7 @@
       var d = ctx.plan.indicators;
       var rec = ctx.plan.strategies[ctx.plan.best_index];
       var cur = ctx.plan.strategies[0];
-      lines.push('DADOS ORBITAIS SIMULADOS ATUAIS (USE APENAS ESTES NÚMEROS):');
+      lines.push('DADOS ORBITAIS SIMULADOS ATUAIS (JÁ CALCULADOS — RESPONDA DIRETAMENTE USANDO APENAS ESTES NÚMEROS):');
       lines.push('- Chuva 30 dias: ' + d.r30 + ' mm (desvio ' + d.dev + '%), Chuva anual: ' + d.rain + ' mm');
       lines.push('- Umidade SMAP: ' + d.smap + ', NDVI MODIS: ' + d.ndvi + ', Temperatura máx: ' + d.tmax + ' °C, Dias > 35 graus: ' + d.hot);
       lines.push('- Solo exposto: ' + d.bare + ' meses, Declividade SRTM: ' + d.slope + '%, Risco hídrico (ws): ' + d.ws + '%, Degradação do solo (sd): ' + d.sd + '%');

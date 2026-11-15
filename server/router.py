@@ -26,10 +26,12 @@ class ModelRouter:
         self.models_by_id: Dict[str, Dict[str, Any]] = {
             m["id"]: m for m in self.registry.get("models", [])
         }
-        # Also map by provider model_name for convenience (e.g. ?model=gemini-2.5-flash)
-        self.models_by_name: Dict[str, Dict[str, Any]] = {
-            m["model_name"]: m for m in self.registry.get("models", [])
-        }
+        # Also map by provider model_name and aliases for convenience (e.g. ?model=gemini-2.5-flash)
+        self.models_by_name: Dict[str, Dict[str, Any]] = {}
+        for m in self.registry.get("models", []):
+            self.models_by_name[m["model_name"]] = m
+            for alias in m.get("aliases", []) or []:
+                self.models_by_name[alias] = m
         self.providers: Dict[str, BaseLLMProvider] = {
             "gemini": GeminiProvider(),
             "openai": OpenAIProvider(),

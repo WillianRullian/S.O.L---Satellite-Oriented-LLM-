@@ -44,6 +44,8 @@ class MockProvider(BaseLLMProvider):
 class TestSOLServerAndGuardrails(unittest.IsolatedAsyncioTestCase):
     async def test_1_area_in_tarefas_tool_call_and_grounding(self):
         router = ModelRouter()
+        router.providers["gemini"] = MockProvider("gemini", configured=False)
+        router.providers["openai"] = MockProvider("openai", configured=False)
         router.providers["ollama"] = MockProvider(
             "ollama",
             response=ProviderResponse(
@@ -55,6 +57,7 @@ class TestSOLServerAndGuardrails(unittest.IsolatedAsyncioTestCase):
             messages=[{"role": "user", "content": "dez tarefas"}],
             tools=[],
             system_prompt="Sistema",
+            requested_model="auto",
             transcript="dez tarefas",
         )
         self.assertIsNotNone(resp)
@@ -68,6 +71,8 @@ class TestSOLServerAndGuardrails(unittest.IsolatedAsyncioTestCase):
 
     async def test_2_change_area_mid_conversation(self):
         router = ModelRouter()
+        router.providers["gemini"] = MockProvider("gemini", configured=False)
+        router.providers["openai"] = MockProvider("openai", configured=False)
         router.providers["ollama"] = MockProvider(
             "ollama",
             response=ProviderResponse(
@@ -79,6 +84,7 @@ class TestSOLServerAndGuardrails(unittest.IsolatedAsyncioTestCase):
             messages=[{"role": "user", "content": "mudar área para 5 hectares"}],
             tools=[],
             system_prompt="Sistema",
+            requested_model="auto",
             transcript="mudar área para 5 hectares",
         )
         allowed = extract_allowed_numbers(
@@ -113,6 +119,7 @@ class TestSOLServerAndGuardrails(unittest.IsolatedAsyncioTestCase):
             messages=[{"role": "user", "content": utterance}],
             tools=[],
             system_prompt="Sistema",
+            requested_model="auto",
             transcript=utterance,
         )
         self.assertEqual(meta["tier"], "reasoning")
@@ -185,6 +192,7 @@ class TestSOLServerAndGuardrails(unittest.IsolatedAsyncioTestCase):
             messages=[{"role": "user", "content": "Qual o diagnóstico completo porque a seca piorou?"}],
             tools=[],
             system_prompt="Sistema",
+            requested_model="auto",
             transcript="Qual o diagnóstico completo porque a seca piorou?",
         )
         self.assertIsNotNone(resp)
@@ -196,6 +204,7 @@ class TestSOLServerAndGuardrails(unittest.IsolatedAsyncioTestCase):
             messages=[{"role": "user", "content": "dois hectares"}],
             tools=[],
             system_prompt="Sistema",
+            requested_model="auto",
             transcript="dois hectares",
         )
         self.assertIsNone(resp_none)

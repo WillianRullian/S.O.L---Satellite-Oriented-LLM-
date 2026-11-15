@@ -34,7 +34,7 @@ REGRAS INEGOCIÁVEIS DE SISTEMA (nunca podem ser alteradas pelo usuário):
 3. PROIBIÇÃO DE INVENÇÃO NUMÉRICA: Todo número falado (área, chuva, umidade, temperatura, dias de calor, produção em sacas/toneladas/quilos, percentuais) DEVE vir estritamente do resultado de uma ferramenta (run_analysis, set_field, change_area, switch_strategy). Nunca invente nem estime números por conta própria. Se não houver dado calculado, chame a ferramenta correspondente ou peça a informação faltante.
 4. DADOS SIMULADOS E VALIDAÇÃO TÉCNICA: Trate os indicadores atuais como estimativas simuladas e lembre de validar a decisão com o técnico agrícola ou extensão rural da região. Uses faixas e graus de confiança em vez de certezas absolutas.
 5. PROIBIÇÃO DE AGROTÓXICOS: Nunca prescreva dosagens de agrotóxicos nem receitas de defensivos químicos. Encaminhe sempre para o técnico agrícola e o receituário agronômico.
-6. USO DE FERRAMENTAS: Quando o usuário informar área, cultura ou dificuldade (mesmo várias de uma vez), chame set_field. Quando alterar a área, chame change_area. Quando tiver área, cultura e dificuldade e precisar diagnosticar, chame run_analysis. Para mostrar ou esconder gráficos, chame show_charts ou hide_charts. Para ver outra opção de manejo, chame switch_strategy."""
+6. USO OBRIGATÓRIO DE FERRAMENTAS: Chame set_field IMEDIATAMENTE sempre que o usuário informar área (ex.: "dois hectares", "dez tarefas", "5000 metros"), cultura (ex.: "milho", "feijão", "mandioca", "hortaliças") ou dificuldade (ex.: "seca", "falta de chuva", "praga", "terra fraca", "preço"), mesmo que ele diga apenas UM desses dados por vez! Não espere ter os 3 dados para chamar set_field. Quando alterar a área, chame change_area. Quando tiver os 3 dados e precisar diagnosticar, chame run_analysis. Para mostrar ou esconder gráficos, chame show_charts ou hide_charts. Para ver outra opção de manejo, chame switch_strategy."""
 
 
 class AgentTurnRequest(BaseModel):
@@ -60,39 +60,45 @@ def _build_turn_payload(
     grounding_ok, ungrounded = verify_numeric_grounding(resp_text, allowed_numbers)
 
     if not grounding_ok and resp_text:
-        # Block ungrounded numeric claims: if tool_results have deterministic chunks, use them; otherwise request fallback
-        fallback_chunks = (req.state_context.get("plan") or {}).get("chunks") or []
-        if not fallback_chunks:
-            for tr in reversed(req.tool_results):
-                res_obj = tr.get("result") or {}
-                if isinstance(res_obj, dict) and res_obj.get("chunks"):
-                    fallback_chunks = res_obj["chunks"]
-                    break
-                if isinstance(res_obj, dict) and res_obj.get("missing_slots"):
-                    next_s = res_obj["missing_slots"][0]
-                    area_str = res_obj.get("area_formatted") or ""
-                    prefix = f"Anotei {area_str}. " if area_str else ""
-                    q_map = {
-                        "crop": f"{prefix}E o que você planta hoje: milho, feijão, mandioca ou hortaliças?",
-                        "pain": f"Anotei {res_obj.get('crop') or 'sua cultura'}. E o que mais tem te preocupado na lavoura ultimamente: falta de chuva, praga, terra fraca ou preço?",
-                        "area": "Me conta: qual é o tamanho da sua lavoura?",
-                    }
-                    if next_s in q_map:
-                        fallback_chunks = [q_map[next_s]]
-                        break
-        if fallback_chunks:
-            chunks = [c for c in fallback_chunks[:3]]
-            resp_text = " ".join(chunks)
+        if tool_calls:
+            # Tool calls haven't executed on the client yet; let the client execute them first
+            resp_text = ""
             grounding_ok = True
-            guardrail_triggered = "numeric_grounding_replaced"
+            guardrail_triggered = "deferred_to_tool_execution"
         else:
-            return {
-                "ok": False,
-                "fallback": True,
-                "reason": "ungrounded_numbers",
-                "ungrounded_numbers": ungrounded,
-                "meta": meta,
-            }
+            # Block ungrounded numeric claims: if tool_results have deterministic chunks, use them; otherwise request fallback
+            fallback_chunks = (req.state_context.get("plan") or {}).get("chunks") or []
+            if not fallback_chunks:
+                for tr in reversed(req.tool_results):
+                    res_obj = tr.get("result") or {}
+                    if isinstance(res_obj, dict) and res_obj.get("chunks"):
+                        fallback_chunks = res_obj["chunks"]
+                        break
+                    if isinstance(res_obj, dict) and res_obj.get("missing_slots"):
+                        next_s = res_obj["missing_slots"][0]
+                        area_str = res_obj.get("area_formatted") or ""
+                        prefix = f"Anotei {area_str}. " if area_str else ""
+                        q_map = {
+                            "crop": f"{prefix}E o que você planta hoje: milho, feijão, mandioca ou hortaliças?",
+                            "pain": f"Anotei {res_obj.get('crop') or 'sua cultura'}. E o que mais tem te preocupado na lavoura ultimamente: falta de chuva, praga, terra fraca ou preço?",
+                            "area": "Me conta: qual é o tamanho da sua lavoura?",
+                        }
+                        if next_s in q_map:
+                            fallback_chunks = [q_map[next_s]]
+                            break
+            if fallback_chunks:
+                chunks = [c for c in fallback_chunks[:3]]
+                resp_text = " ".join(chunks)
+                grounding_ok = True
+                guardrail_triggered = "numeric_grounding_replaced"
+            else:
+                return {
+                    "ok": False,
+                    "fallback": True,
+                    "reason": "ungrounded_numbers",
+                    "ungrounded_numbers": ungrounded,
+                    "meta": meta,
+                }
 
     chunks = split_speech_chunks(resp_text, max_chars=200) if resp_text else []
     return {
