@@ -1,7 +1,10 @@
 import json
 import uuid
 from typing import Any, Dict, List
-import httpx
+try:
+    import httpx
+except ImportError:  # pragma: no cover
+    httpx = None  # type: ignore
 
 from ..config import settings
 from .base import BaseLLMProvider, ProviderResponse
