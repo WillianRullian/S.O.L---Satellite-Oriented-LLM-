@@ -13,8 +13,11 @@ html,body{height:100%;margin:0}
 body{background:#050805;color:var(--ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;justify-content:center;align-items:center}
 #app{width:100%;max-width:410px;height:100%;max-height:800px;background:var(--bg);display:flex;flex-direction:column;border-radius:32px;overflow:hidden;border:1px solid var(--ln);position:relative}
 @media(max-width:430px){#app{border-radius:0;max-height:none;border:0}}
-.top{height:56px;display:flex;align-items:center;justify-content:center;padding-top:10px}
+.top{height:56px;display:flex;align-items:center;justify-content:space-between;padding:10px 18px 0}
 .eye{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:600}
+.beta-btn{background:var(--s2);color:var(--ink);border:1px solid var(--ln);border-radius:999px;padding:5px 11px;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;display:flex;align-items:center;gap:5px;transition:border-color .2s,background .2s}
+.beta-btn:hover{border-color:var(--acc)}
+.beta-dot{width:7px;height:7px;border-radius:50%;background:var(--pri)}
 svg.ic{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 main{flex:1;display:flex;flex-direction:column;padding:6px 22px;overflow-y:auto;overflow-x:hidden}
 .stage{flex:1;min-height:260px;display:grid;place-items:center;transition:all .4s}
@@ -64,18 +67,93 @@ main{flex:1;display:flex;flex-direction:column;padding:6px 22px;overflow-y:auto;
 .bar i{display:block;height:100%;background:var(--pri);border-radius:8px;transition:width .6s}
 .bar em{font-style:normal;width:76px;text-align:right;font-size:13px;color:var(--mut)}
 .src{text-align:center;font-size:12px;color:var(--mut);margin-top:14px;line-height:1.5}
+
+/* ===== painel beta: voz & apresentação ===== */
+.drawer-bg{position:absolute;inset:0;background:rgba(5,8,5,.72);backdrop-filter:blur(6px);display:flex;align-items:flex-end;z-index:20;animation:in .2s ease}
+.drawer-bg[hidden]{display:none}
+.drawer{width:100%;background:var(--s1);border-top:1px solid var(--ln);border-radius:26px 26px 0 0;padding:18px 20px 24px;max-height:86%;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.dh{display:flex;align-items:center;justify-content:space-between}
+.dh h3{margin:0;font-size:16px;font-weight:700}
+.xbtn{background:var(--s2);color:var(--ink);border:0;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer}
+.fld{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--mut)}
+.fld label{font-weight:600;color:var(--ink);display:flex;justify-content:space-between}
+.fld select,.fld input{width:100%;padding:9px 11px;border-radius:12px;border:1px solid var(--ln);background:var(--s2);color:var(--ink);font-size:13px;font-family:inherit}
+.fld input[type="range"]{padding:0;accent-color:var(--acc)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{padding:11px 14px;border-radius:14px;border:0;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-p{background:var(--acc);color:var(--on)}
+.btn-s{background:var(--s2);color:var(--ink);border:1px solid var(--ln)}
+.btn-g{background:var(--pri);color:#09140b}
+.note{font-size:11px;color:var(--mut);line-height:1.45;margin:0}
 </style>
 </head>
 <body>
 <div id="app">
-<div class="top"><span class="eye">S.O.L. · B.I.G. Tech</span></div>
+<div class="top"><span class="eye">S.O.L. · B.I.G. Tech</span><button class="beta-btn" id="betaBtn" onclick="openBeta()" type="button"><span class="beta-dot"></span>Voz · Beta</button></div>
 <main>
  <section class="stage"><div class="orb" id="orb" data-m="idle"></div></section>
  <section id="viz" hidden></section>
 </main>
 <div class="foot">
- <div class="hint" id="hint">Toque no microfone para falar com o S.O.L.</div>
- <button class="mic" id="mic" onclick="micTap()" aria-label="Falar com o S.O.L."><svg class="ic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+ <div class="hint" id="hint">Toque no microfone para falar com a S.O.L.</div>
+ <button class="mic" id="mic" onclick="micTap()" aria-label="Falar com a S.O.L."><svg class="ic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+</div>
+<div class="drawer-bg" id="betaModal" hidden onclick="if(event.target===this)closeBeta()">
+ <div class="drawer" role="dialog" aria-label="Configuração de Voz e Apresentação">
+  <div class="dh"><h3>Voz da S.O.L. · Modelo Beta</h3><button class="xbtn" onclick="closeBeta()" type="button" aria-label="Fechar">×</button></div>
+  <div class="fld">
+   <label for="vEngine">Motor de Voz</label>
+   <select id="vEngine" onchange="onEngineChange()">
+    <option value="eleven_server">ElevenLabs v4 — Servidor Local (.env.local)</option>
+    <option value="browser">Navegador (pt-BR Feminina Automática)</option>
+    <option value="openai">OpenAI TTS — Voz Neural Humana (API)</option>
+    <option value="eleven">ElevenLabs — Chave Manual no Navegador</option>
+   </select>
+  </div>
+  <div id="serverOpts" hidden>
+   <div class="fld">
+    <label for="srvVoice">Voz da S.O.L. (ElevenLabs v4)</label>
+    <select id="srvVoice" onchange="saveVoiceCfg()">
+     <option value="cgSgspJ2msm6clMCkdW9">Jessica — Jovem, alegre, brilhante e acolhedora (Padrão)</option>
+     <option value="EXAVITQu4vr4xnSDxMaL">Sarah — Jovem, confiante e tranquilizadora</option>
+     <option value="hpp4J3VqNfWAUOO0d1Us">Bella — Clara, educativa e calorosa</option>
+     <option value="FGY2WhTYpPnrIDTdsKH5">Laura — Jovem, entusiasmada e expressiva</option>
+    </select>
+   </div>
+   <p class="note" style="margin-top:6px">Conectado ao servidor local com modelo <b>eleven_v4</b> e Request Stitching para fala contínua e natural em português.</p>
+  </div>
+  <div id="browserOpts">
+   <div class="fld">
+    <label for="vSelect">Voz instalada no dispositivo</label>
+    <select id="vSelect" onchange="saveVoiceCfg()"></select>
+   </div>
+   <div class="row2" style="margin-top:8px">
+    <div class="fld"><label for="vPitch">Tom (jovem) <span id="vPitchVal">1.08</span></label><input id="vPitch" type="range" min="0.85" max="1.30" step="0.01" value="1.08" oninput="updateRange()"></div>
+    <div class="fld"><label for="vRate">Ritmo <span id="vRateVal">1.02</span></label><input id="vRate" type="range" min="0.85" max="1.20" step="0.01" value="1.02" oninput="updateRange()"></div>
+   </div>
+   <p class="note" style="margin-top:6px">Dica para avaliadores: no Microsoft Edge, selecione <b>Francisca Online (Natural)</b> para máxima naturalidade sem precisar de chave de API.</p>
+  </div>
+  <div id="openaiOpts" hidden>
+   <div class="fld"><label for="oaKey">Chave API OpenAI</label><input id="oaKey" type="password" placeholder="sk-..." onchange="saveVoiceCfg()"></div>
+   <div class="fld" style="margin-top:8px">
+    <label for="oaVoice">Persona da S.O.L.</label>
+    <select id="oaVoice" onchange="saveVoiceCfg()">
+     <option value="nova">Nova — Jovem, confiante, alegre e acolhedora</option>
+     <option value="shimmer">Shimmer — Suave, gentil e encorajadora</option>
+     <option value="coral">Coral — Expressiva e energética</option>
+    </select>
+   </div>
+  </div>
+  <div id="elevenOpts" hidden>
+   <div class="fld"><label for="elKey">Chave API ElevenLabs</label><input id="elKey" type="password" placeholder="xi-..." onchange="saveVoiceCfg()"></div>
+   <div class="fld" style="margin-top:8px"><label for="elVoice">Voice ID (Multilingual v2)</label><input id="elVoice" type="text" value="EXAVITQu4vr4xnSDxMaL" placeholder="ID da voz feminina" onchange="saveVoiceCfg()"></div>
+  </div>
+  <div class="row2">
+   <button class="btn btn-s" type="button" onclick="testVoice()">Testar Voz</button>
+   <button class="btn btn-g" type="button" onclick="runPitchDemo()">Apresentar (Avaliadores)</button>
+  </div>
+  <button class="btn btn-p" type="button" onclick="closeBeta()">Salvar e Voltar</button>
+ </div>
 </div>
 </div>
 <script>
@@ -90,18 +168,161 @@ function mode(m){$('orb').dataset.m=m;$('mic').classList.toggle('on',m=='listen'
 function K(x,h){return Math.max(5,Math.min(h||100,Math.round(x)))}
 function lvl(x){return x<35?'baixo':x<60?'médio':'alto'}
 
+/* ================= motor de voz humana (beta) ================= */
+var VC_KEY='sol_voice_cfg_v1';
+var VC=Object.assign({engine:'browser',voiceURI:'',pitch:1.08,rate:1.02,oaKey:'',oaVoice:'nova',elKey:'',elVoice:'cgSgspJ2msm6clMCkdW9',srvVoice:'cgSgspJ2msm6clMCkdW9'},
+ JSON.parse(localStorage.getItem(VC_KEY)||'{}'));
+var voices=[],curAudio=null,audioCache=new Map(),hasServer=false;
+
+(function detectServer(){
+ if(location.protocol==='file:')return;
+ fetch('/api/health').then(function(r){return r.json()}).then(function(d){
+  if(d&&d.elevenlabs){
+   hasServer=true;
+   if(!localStorage.getItem(VC_KEY)||VC.engine==='browser')VC.engine='eleven_server';
+   var btn=$('betaBtn');if(btn)btn.innerHTML='<span class="beta-dot"></span>ElevenLabs v4';
+  }
+ }).catch(function(){})})();
+
+function saveVoiceCfg(){
+ VC.engine=$('vEngine').value;VC.voiceURI=$('vSelect').value;
+ VC.pitch=parseFloat($('vPitch').value);VC.rate=parseFloat($('vRate').value);
+ VC.oaKey=$('oaKey').value.trim();VC.oaVoice=$('oaVoice').value;
+ VC.elKey=$('elKey').value.trim();VC.elVoice=$('elVoice').value.trim()||'cgSgspJ2msm6clMCkdW9';
+ VC.srvVoice=$('srvVoice').value||'cgSgspJ2msm6clMCkdW9';
+ localStorage.setItem(VC_KEY,JSON.stringify(VC))}
+
+function updateRange(){$('vPitchVal').textContent=parseFloat($('vPitch').value).toFixed(2);$('vRateVal').textContent=parseFloat($('vRate').value).toFixed(2);saveVoiceCfg()}
+function syncVoiceUI(){
+ $('vEngine').value=VC.engine;$('vPitch').value=VC.pitch;$('vRate').value=VC.rate;
+ $('vPitchVal').textContent=Number(VC.pitch).toFixed(2);$('vRateVal').textContent=Number(VC.rate).toFixed(2);
+ $('oaKey').value=VC.oaKey||'';$('oaVoice').value=VC.oaVoice||'nova';
+ $('elKey').value=VC.elKey||'';$('elVoice').value=VC.elVoice||'cgSgspJ2msm6clMCkdW9';
+ $('srvVoice').value=VC.srvVoice||'cgSgspJ2msm6clMCkdW9';
+ onEngineChange(true)}
+function onEngineChange(skipSave){
+ var e=$('vEngine').value;
+ $('serverOpts').hidden=e!=='eleven_server';$('browserOpts').hidden=e!=='browser';$('openaiOpts').hidden=e!=='openai';$('elevenOpts').hidden=e!=='eleven';
+ if(!skipSave)saveVoiceCfg()}
+function openBeta(){populateVoices();syncVoiceUI();$('betaModal').hidden=false}
+function closeBeta(){saveVoiceCfg();$('betaModal').hidden=true}
+
+function scoreVoice(v){
+ var l=(v.lang||'').toLowerCase(),n=(v.name||'').toLowerCase(),s=0;
+ if(l==='pt-br'||l==='pt_br')s+=100;else if(l.startsWith('pt'))s+=40;else return -999;
+ if(/natural|online|neural|premium|enhanced/.test(n))s+=55;
+ if(/francisca|thalita|leticia|maria|luciana|raquel|fernanda|camila|vitoria|vitória|helena|gabriela|sofia|lara/.test(n))s+=45;
+ if(/google portugu[eê]s/.test(n))s+=35;
+ if(/microsoft/.test(n))s+=20;
+ if(/female|mulher|feminina/.test(n))s+=25;
+ if(/daniel|antonio|antônio|fabio|fábio|duarte|tiago|valerio|humberto|julio|nicolau|donato|espeak/.test(n))s-=80;
+ if(!v.localService)s+=10;
+ return s}
+
+function populateVoices(){
+ if(!ss)return;
+ voices=ss.getVoices().slice().sort(function(a,b){return scoreVoice(b)-scoreVoice(a)});
+ var pt=voices.filter(function(v){return (v.lang||'').toLowerCase().startsWith('pt')});
+ var selEl=$('vSelect');if(!selEl)return;
+ selEl.innerHTML='';
+ var autoOpt=document.createElement('option');autoOpt.value='';
+ autoOpt.textContent=pt.length?'Automática · '+pt[0].name:'Automática (padrão do sistema)';
+ selEl.appendChild(autoOpt);
+ pt.forEach(function(v){var o=document.createElement('option');o.value=v.voiceURI;o.textContent=v.name+' ('+v.lang+')';selEl.appendChild(o)});
+ if(VC.voiceURI&&pt.some(function(v){return v.voiceURI===VC.voiceURI}))selEl.value=VC.voiceURI}
+if(ss){populateVoices();if(ss.onvoiceschanged!==undefined)ss.onvoiceschanged=populateVoices}
+
+function pickVoice(){
+ if(!voices.length&&ss)populateVoices();
+ if(VC.voiceURI){var exact=voices.find(function(v){return v.voiceURI===VC.voiceURI});if(exact)return exact}
+ var pt=voices.filter(function(v){return (v.lang||'').toLowerCase().startsWith('pt')});
+ return pt[0]||voices[0]||null}
+
+function stopAudio(){
+ if(ss)ss.cancel();
+ if(curAudio){try{curAudio.pause();curAudio.currentTime=0}catch(e){}curAudio=null}}
+
+function speakBrowser(t,my,cb){
+ if(!ss){msg(t);setTimeout(function(){if(my===tk&&cb)cb()},Math.min(9000,1500+t.length*55));return}
+ ss.cancel();
+ var parts=t.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[t],v=pickVoice(),i=0;
+ mode('talk');msg('S.O.L. falando…');
+ function step(){
+  if(my!==tk)return;
+  if(i>=parts.length){mode('idle');if(cb)cb();return}
+  var u=new SpeechSynthesisUtterance(parts[i++].trim());
+  u.lang='pt-BR';if(v)u.voice=v;
+  u.pitch=VC.pitch||1.08;u.rate=VC.rate||1.02;
+  u.onend=function(){if(my!==tk)return;if(i<parts.length)setTimeout(step,110);else step()};
+  u.onerror=function(){if(my===tk){mode('idle');if(cb)cb()}};
+  ss.speak(u)}
+ step()}
+
+function playUrl(url,my,cb){
+ if(my!==tk)return;
+ var a=new Audio(url);curAudio=a;mode('talk');msg('S.O.L. falando…');
+ var done=function(){if(curAudio===a)curAudio=null;if(my!==tk)return;mode('idle');if(cb)cb()};
+ a.onended=done;a.onerror=done;
+ a.play().catch(function(){done()})}
+
+async function speakNeural(t,my,cb,ctx){
+ var vid=VC.engine==='eleven_server'?(VC.srvVoice||'cgSgspJ2msm6clMCkdW9'):VC.engine==='openai'?VC.oaVoice:VC.elVoice;
+ var key=VC.engine+':'+vid+':'+t;
+ if(audioCache.has(key))return playUrl(audioCache.get(key),my,cb);
+ try{
+  var res;
+  if(VC.engine==='eleven_server'){
+   res=await fetch('/api/tts',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({text:t,voiceId:vid,previousText:ctx&&ctx.prev||'',nextText:ctx&&ctx.next||''})});
+  }else if(VC.engine==='openai'){
+   if(!VC.oaKey)return speakBrowser(t,my,cb);
+   res=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',
+    headers:{'Authorization':'Bearer '+VC.oaKey,'Content-Type':'application/json'},
+    body:JSON.stringify({model:'tts-1',voice:VC.oaVoice||'nova',input:t,speed:Math.min(1.2,Math.max(0.85,VC.rate||1.0))})});
+  }else{
+   if(!VC.elKey)return speakBrowser(t,my,cb);
+   res=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+(VC.elVoice||'cgSgspJ2msm6clMCkdW9'),{method:'POST',
+    headers:{'xi-api-key':VC.elKey,'Content-Type':'application/json','Accept':'audio/mpeg'},
+    body:JSON.stringify({text:t,model_id:'eleven_v4',voice_settings:{stability:0.4,similarity_boost:0.75}})});
+  }
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  var blob=await res.blob(),url=URL.createObjectURL(blob);
+  audioCache.set(key,url);
+  playUrl(url,my,cb);
+ }catch(e){speakBrowser(t,my,cb)}}
+
 /* ================= voz: falar ================= */
-function say(t,cb){var my=++tk;if(rec){try{rec.abort()}catch(e){}}
- if(!ss){msg(t);setTimeout(function(){if(my==tk&&cb)cb()},Math.min(9000,1500+t.length*55));return}
- ss.cancel();var u=new SpeechSynthesisUtterance(t);u.lang='pt-BR';u.rate=.95;mode('talk');msg('S.O.L. falando…');
- var end=function(){if(my!=tk)return;mode('idle');if(cb)cb()};u.onend=end;u.onerror=end;ss.speak(u)}
-function seq(a,cb){if(!a.length){if(cb)cb();return}say(a[0],function(){seq(a.slice(1),cb)})}
+function say(t,cb,ctx){var my=++tk;if(rec){try{rec.abort()}catch(e){}}
+ stopAudio();
+ if(VC.engine==='eleven_server'||VC.engine==='openai'||VC.engine==='eleven')return speakNeural(t,my,cb,ctx);
+ speakBrowser(t,my,cb)}
+function seq(a,cb,idx){var i=idx||0;if(i>=a.length){if(cb)cb();return}
+ say(a[i],function(){seq(a,cb,i+1)},{prev:i>0?a[i-1]:'',next:i+1<a.length?a[i+1]:''})}
 function again(){listen()}
+
+function testVoice(){
+ saveVoiceCfg();
+ say('Oi! Eu sou a S.O.L., da B.I.G. Tech! É uma alegria caminhar com você pra fazer a sua lavoura crescer forte e bonita.')}
+
+function runPitchDemo(){
+ closeBeta();started=true;state='ready';L=L||FB;
+ A={area:3,crop:'Milho',pain:'seca'};
+ plan=build();sel=plan.best;viz(false);
+ seq([
+  'Oi, avaliadores! Que alegria ter vocês aqui! Eu sou a S.O.L., da B.I.G. Tech.',
+  'Eu nasci pra ser a parceira do pequeno produtor, levando dados dos satélites da NASA direto pra roça, só pela voz, com carinho e clareza.',
+  'Vamos imaginar juntos um produtor com três hectares de milho preocupado com a falta de chuva. Olhei a terra dele agora mesmo pelo satélite!'
+ ],function(){
+  viz(true);
+  var c=plan.chunks;
+  seq([c[0],c[2],c[3],'É assim que a gente ajuda o pequeno produtor a decidir melhor e crescer a cada safra. Obrigada!'],function(){
+   msg('Apresentação concluída · toque no microfone para testar ao vivo')})})}
 
 /* ================= voz: ouvir ================= */
 function listen(){var R=window.SpeechRecognition||window.webkitSpeechRecognition;
  if(!R){msg('Este navegador não ouve voz. Use Chrome, Edge ou Safari.');return}
- tk++;if(ss)ss.cancel();if(rec){try{rec.abort()}catch(e){}}
+ tk++;stopAudio();if(rec){try{rec.abort()}catch(e){}}
  var r=rec=new R();r.lang='pt-BR';r.interimResults=true;mode('listen');msg('Ouvindo… pode falar');
  r.onresult=function(e){var x=e.results[e.results.length-1],t=x[0].transcript;if(!x.isFinal){msg('“'+t+'”');return}if(rec==r){nsp=0;handle(norm(t),t)}};
  r.onerror=function(e){if(rec!=r)return;
@@ -112,35 +333,35 @@ function listen(){var R=window.SpeechRecognition||window.webkitSpeechRecognition
 function micTap(){if(!started)start();else listen()}
 
 /* ================= início + localização ================= */
-var FEAT='Eu sou o S.O.L. Uso satélites da NASA para analisar a sua terra. Você pode me dizer o tamanho da lavoura, o que planta e sua maior dificuldade. Pode mudar a área quando quiser, dizendo, por exemplo: mudar área para dez hectares. E se quiser ver os gráficos de produção, água e solo, peça: mostrar gráficos.';
+var FEAT='Eu sou a S.O.L., sua parceira no campo! Uso satélites da NASA pra cuidar da sua terra junto com você. Me conta o tamanho da lavoura, o que você planta e o que mais te preocupa. Se quiser mudar a área, é só dizer: mudar área para dez hectares. E quando quiser ver os gráficos na tela, pode pedir que eu mostro na hora!';
 function start(){started=true;state='intro';
  locP=new Promise(function(res){if(!navigator.geolocation)return res(null);
   navigator.geolocation.getCurrentPosition(function(p){res({lat:p.coords.latitude,lon:p.coords.longitude})},function(){res(null)},{timeout:8000,maximumAge:6e5})});
- seq(['Oi! Eu sou o S.O.L., da B.I.G. Tech. Eu uso satélites da NASA para analisar a sua terra e dizer o que plantar.',
-  'Você pode me dizer o tamanho da sua lavoura e o que planta. Pode mudar a área quando quiser, é só falar: mudar área para dez hectares. E se quiser ver os gráficos de produção na tela, é só pedir.'],
+ seq(['Oi! Que alegria falar com você! Eu sou a S.O.L., da B.I.G. Tech. Tô aqui pra ser sua parceira na roça, usando os satélites da NASA pra cuidar da sua terra e fazer a sua colheita crescer forte!',
+  'É bem simples: você me conta o tamanho da sua lavoura e o que está plantando. Se precisar mudar a área depois, é só falar: mudar área para dez hectares. E se quiser ver os gráficos na tela, é só pedir!'],
   function(){locP.then(function(l){L=l||FB;
-   seq([l?'Já peguei a localização da sua terra.':'Não consegui o GPS, então vou usar uma região aproximada do Nordeste.'],next)})})}
+   seq([l?'Prontinho, já encontrei a sua terra pelo satélite! Vamos juntos.':'Não consegui pegar o GPS agora, mas sem problema! Vou usar uma região aqui do Nordeste pra gente começar.'],next)})})}
 
 /* ================= diálogo guiado por voz ================= */
 function next(){var q;
- if(A.area==null){state='area';q='Qual o tamanho da sua lavoura? Pode falar em hectares, tarefas ou metros. Por exemplo: dois hectares.'}
- else if(!A.crop){state='crop';q='E o que você planta hoje? Milho, feijão, mandioca ou hortaliças?'}
- else if(!A.pain){state='pain';q='Qual é a sua maior dificuldade? Falta de chuva, praga, terra fraca ou preço pra vender?'}
+ if(A.area==null){state='area';q='Me conta: qual é o tamanho da sua lavoura? Pode falar em hectares, tarefas ou metros, do jeito que preferir. Por exemplo: dois hectares.'}
+ else if(!A.crop){state='crop';q='Que beleza! E o que você planta hoje? Milho, feijão, mandioca ou hortaliças?'}
+ else if(!A.pain){state='pain';q='Entendi! E o que mais tem te preocupado na lavoura ultimamente? Falta de chuva, praga, terra fraca ou preço pra vender?'}
  else return analyze();
  say(q,again)}
-function miss(raw){var h={area:'Diga, por exemplo: dois hectares, ou dez tarefas.',crop:'Diga milho, feijão, mandioca ou hortaliças.',pain:'Diga falta de chuva, praga, terra fraca ou preço.',ready:'Você pode pedir: mostrar gráficos, mudar área, ou recomeçar.'}[state]||'';
- say('Não entendi. '+h,again)}
+function miss(raw){var h={area:'Pode dizer, por exemplo: dois hectares, ou dez tarefas.',crop:'Pode dizer milho, feijão, mandioca ou hortaliças.',pain:'Pode dizer falta de chuva, praga, terra fraca ou preço.',ready:'Você pode me pedir: mostrar gráficos, mudar área, ou recomeçar.'}[state]||'';
+ say('Opa, acho que não peguei direitinho. '+h,again)}
 function handle(t,raw){
- if(/esconde|fech|ocult|sumir|limpa/.test(t)){viz(false);return say('Pronto, tela limpa.',again)}
+ if(/esconde|fech|ocult|sumir|limpa/.test(t)){viz(false);return say('Prontinho, tela limpa pra você!',again)}
  if(/grafic|mostr|ver (o )?plano|producao|barra|na tela/.test(t)){
-  if(!plan)return say('Primeiro preciso entender sua terra.',next);
-  viz(true);return say('Aqui estão os gráficos da sua terra.',again)}
- if(/recome|do zero|reinici/.test(t)){A={area:null,crop:null,pain:null};plan=null;viz(false);return say('Vamos de novo.',next)}
+  if(!plan)return say('Antes dos gráficos, me conta um pouquinho da sua terra!',next);
+  viz(true);return say('Aqui estão os gráficos da sua terra!',again)}
+ if(/recome|do zero|reinici/.test(t)){A={area:null,crop:null,pain:null};plan=null;viz(false);return say('Combinado! Vamos começar do zero juntos.',next)}
  if(/ajuda|o que voce faz|como funciona/.test(t))return say(FEAT,again);
  if(/(mud|alter|troc|corrig)\w*.*(area|tamanho|terra|lavoura)/.test(t)){var v=parseArea(t);
-  if(v>0){A.area=v;return next()}A.area=null;return say('Claro.',next)}
+  if(v>0){A.area=v;return next()}A.area=null;return say('Claro, com certeza!',next)}
  if(plan&&/outro|proxim/.test(t)){sel=(sel+1)%3;var X=plan.S[sel];if(!$('viz').hidden)renderViz();
-  return seq([X.t+'. '+X.why,'Eu estimo '+fmtP(A.crop,X.prod,1)+' por safra.'],again)}
+  return seq([X.t+'. '+X.why,'Com essa opção, eu estimo '+fmtP(A.crop,X.prod,1)+' por safra.'],again)}
  if(plan&&/repet|de novo|ouvir|explic|detalh|diagnos/.test(t))return seq(plan.chunks,again);
  var g=fill(t);
  if(!g.length){if(state=='intro'||state=='idle')return next();return miss(raw)}
@@ -208,20 +429,20 @@ function build(){var d=pipe(),cr=A.crop,cl=cr.toLowerCase(),ha=A.area,
  var how=b==1?'Plante o '+n+' logo depois de colher, e deixe a palha no chão.':'Plante crotalária ou feijão-de-porco entre as safras, e deixe a palha cobrindo a terra.',
   dev=d.dev<-25?'bem menos que o normal':d.dev>25?'mais que o normal':'perto do normal',
   sm=d.smap<.18?'baixa':d.smap<.26?'regular':'boa',
-  dif={seca:'Você falou da falta de chuva. E faz sentido: o risco de falta de água na sua terra está '+lvl(d.ws)+'.',
-   praga:'Sobre as pragas: plantar a mesma coisa no mesmo lugar todo ano deixa o bicho se criar. Mudar a cultura quebra esse ciclo.',
-   solo:'Sobre a terra fraca: ela fica uns '+d.bare+' meses por ano descoberta, sem planta, e isso gasta o solo. O risco de a chuva levar a terra embora é '+lvl(d.sd)+'.',
-   mercado:'Sobre o preço: uma segunda cultura na mesma terra traz mais uma entrada de dinheiro, sem precisar de mais chão.'}[A.pain];
- var chunks=['Pelo que os satélites me mostram, sua lavoura de '+cl+' tem '+fmtA(ha)+'. Nos últimos 30 dias choveu '+d.r30+' milímetros, '+dev+'. A umidade da terra está '+sm+', e o calor passou de 35 graus em uns '+d.hot+' dias do ano.',
+  dif={seca:'Você me contou da falta de chuva, e faz todo sentido: o risco de falta de água na sua terra está '+lvl(d.ws)+'. Mas a gente consegue proteger a umidade!',
+   praga:'Sobre as pragas: plantar a mesma coisa no mesmo lugar todo ano deixa o bicho se criar. Mudar a cultura quebra esse ciclo rapidinho.',
+   solo:'Sobre a terra fraca: ela fica uns '+d.bare+' meses por ano descoberta, sem planta, e isso cansa o solo. O risco de a chuva levar a terra embora é '+lvl(d.sd)+'.',
+   mercado:'Sobre o preço: uma segunda cultura na mesma terra traz mais uma entrada de dinheiro pra sua família, sem precisar de mais chão.'}[A.pain];
+ var chunks=['Olha o que os satélites me mostraram da sua lavoura de '+cl+' de '+fmtA(ha)+'. Nos últimos 30 dias choveu '+d.r30+' milímetros, '+dev+'. A umidade da terra está '+sm+', e o calor passou de 35 graus em uns '+d.hot+' dias do ano.',
   dif,
-  'Meu conselho é: '+B.t+'. '+B.why+' '+how,
-  'Para '+fmtA(ha)+', eu estimo uns '+fmtP(cr,B.prod,1)+' por safra, contra '+fmtP(cr,C.prod,1)+' se continuar do mesmo jeito.',
-  'Isso é uma ajuda para você decidir. Converse sempre com o técnico agrícola da sua região.',
-  'Se quiser ver os gráficos da produção, água e solo na tela, é só me pedir.'];
+  'Meu conselho pra você crescer com segurança é: '+B.t+'. '+B.why+' '+how,
+  'Para '+fmtA(ha)+', eu estimo uns '+fmtP(cr,B.prod,1)+' por safra, contra '+fmtP(cr,C.prod,1)+' se continuar do mesmo jeito. Faz muita diferença!',
+  'Eu tô aqui pra te apoiar na decisão, mas converse sempre com o técnico agrícola da sua região, combinado?',
+  'Se quiser ver os gráficos da produção, água e solo na tela, é só me pedir!'];
  return {d:d,S:S,best:b,chunks:chunks}}
 
 function analyze(){var had=!!plan;L=L||FB;plan=build();sel=plan.best;state='ready';if(!$('viz').hidden)renderViz();
- var c=plan.chunks,pre=had?'Certo. Refiz as previsões para '+fmtA(A.area)+' de '+A.crop.toLowerCase()+'.':'Pronto, olhei sua terra nos satélites da NASA.';
+ var c=plan.chunks,pre=had?'Prontinho! Refiz as previsões para '+fmtA(A.area)+' de '+A.crop.toLowerCase()+'.':'Prontinho! Olhei a sua terra com os satélites da NASA e já tenho boas ideias pra gente fortalecer sua colheita.';
  seq(had?[pre,c[2],c[3],c[5]]:[pre,c[0],c[1],c[2],c[3],c[4],c[5]],again)}
 
 /* ================= gráficos só sob demanda ================= */
