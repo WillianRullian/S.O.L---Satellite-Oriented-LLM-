@@ -166,6 +166,138 @@
     return null;
   }
 
+  function setAriaBusy(isBusy) {
+    if (typeof root.document === 'undefined' || !root.document || typeof root.document.getElementById !== 'function') {
+      return;
+    }
+    var val = isBusy ? 'true' : 'false';
+    var orb = root.document.getElementById('orb');
+    if (orb && typeof orb.setAttribute === 'function') {
+      orb.setAttribute('aria-busy', val);
+    }
+    var hint = root.document.getElementById('hint');
+    if (hint && typeof hint.setAttribute === 'function') {
+      hint.setAttribute('aria-busy', val);
+    }
+    if (typeof root.document.querySelector === 'function') {
+      var main = root.document.querySelector('main');
+      if (main && typeof main.setAttribute === 'function') {
+        main.setAttribute('aria-busy', val);
+      }
+    }
+  }
+
+  function ensureAccessibilityAttrs() {
+    if (typeof root.document === 'undefined' || !root.document || typeof root.document.getElementById !== 'function') {
+      return;
+    }
+    var hint = root.document.getElementById('hint');
+    if (hint && typeof hint.setAttribute === 'function') {
+      hint.setAttribute('role', 'status');
+      hint.setAttribute('aria-live', 'polite');
+      hint.setAttribute('aria-atomic', 'true');
+    }
+  }
+
+  function getToolStatusMessage(toolName, args) {
+    var safeArgs = args || {};
+    if (toolName === 'set_field' || toolName === 'change_area') {
+      return 'Salvando dados no sistema interno…';
+    }
+    if (toolName === 'run_analysis') {
+      return 'Consultando satélites e analisando…';
+    }
+    if (toolName === 'research_agronomic_mock') {
+      var topic = String(safeArgs.topic || safeArgs.query || '').toLowerCase();
+      var category = String(safeArgs.category || '').toLowerCase();
+      if (category === 'satellite_soil' || /sat[eé]lit|ndvi|smap|nasa|sentinel|landsat|radar|umidade/.test(topic)) {
+        return 'Consultando satélites…';
+      }
+      if (category === 'climate_zarc' || /chuva|clima|inmet|zarc|seca|previs|temperatura|geada/.test(topic)) {
+        return 'Consultando sistema climático e ZARC…';
+      }
+      if (category === 'management_agronomy' || /solo|adub|calagem|plantio|manejo|embrapa|praga|doen[çc]/.test(topic)) {
+        return 'Analisando manejo e dados agronômicos…';
+      }
+      return 'Consultando sistemas internos…';
+    }
+    if (toolName === 'get_profile' || toolName === 'remember') {
+      return 'Buscando dados no sistema interno…';
+    }
+    if (toolName === 'show_charts' || toolName === 'hide_charts' || toolName === 'switch_strategy') {
+      return 'Atualizando gráficos no sistema…';
+    }
+    return 'Consultando sistemas internos…';
+  }
+
+  function createProcessingFeedback(userUtterance) {
+    ensureAccessibilityAttrs();
+    setAriaBusy(true);
+
+    var stages = [
+      'Pensando…',
+      'Buscando dados…',
+      'Consultando sistema…',
+      'Consultando satélites…',
+      'Consultando sistemas internos…',
+      'Analisando…'
+    ];
+    var stageIdx = 1;
+    var timerId = null;
+    var stopped = false;
+
+    function emitStatus(text) {
+      if (stopped || !text) return;
+      if (typeof root.msg === 'function') {
+        root.msg(text);
+      } else if (typeof root.document !== 'undefined' && root.document && typeof root.document.getElementById === 'function') {
+        var hint = root.document.getElementById('hint');
+        if (hint) hint.textContent = text;
+      }
+    }
+
+    var q = String(userUtterance || '').toLowerCase();
+    var initialMsg = /sat[eé]lit|ndvi|smap|chuva|umidade/.test(q)
+      ? 'Consultando satélites…'
+      : 'Sol pensando…';
+    emitStatus(initialMsg);
+
+    if (typeof setInterval === 'function' && typeof clearInterval === 'function') {
+      timerId = setInterval(function () {
+        if (stopped) return;
+        emitStatus(stages[stageIdx % stages.length]);
+        stageIdx += 1;
+      }, 900);
+    }
+
+    function stopTimer() {
+      if (timerId !== null && typeof clearInterval === 'function') {
+        clearInterval(timerId);
+        timerId = null;
+      }
+    }
+
+    return {
+      onToolCall: function (toolName, args) {
+        emitStatus(getToolStatusMessage(toolName, args));
+      },
+      onAnalyzing: function () {
+        emitStatus('Analisando dados encontrados…');
+      },
+      beforeSpeech: function () {
+        stopTimer();
+        emitStatus('Preparando a voz da Sol…');
+        stopped = true;
+        setAriaBusy(false);
+      },
+      stop: function () {
+        stopped = true;
+        stopTimer();
+        setAriaBusy(false);
+      }
+    };
+  }
+
   async function runAgentTurn(t, raw, fallbackFn) {
     var transport = customTransport || defaultHttpTransport;
     var memory = root.SOLMemory;
@@ -186,6 +318,7 @@
     var toolResults = [];
     var finalChunks = null;
     var lastMeta = null;
+    var feedback = createProcessingFeedback(userUtterance);
 
     try {
       for (var iter = 0; iter < MAX_ITERATIONS; iter++) {
@@ -229,6 +362,7 @@
 
           for (var cIdx = 0; cIdx < calls.length; cIdx++) {
             var call = calls[cIdx];
+            feedback.onToolCall(call.name, call.arguments || {});
             var execResult = tools.executeTool(call.name, call.arguments || {});
             toolResults.push({
               id: call.id || ('call_' + iter + '_' + cIdx),
@@ -243,6 +377,7 @@
               content: JSON.stringify(execResult)
             });
           }
+          feedback.onAnalyzing();
 
           // Bypass 2nd LLM round-trip only for pure UI toggles (show/hide charts) or trivial <=3-word confirmations
           if (!response.text && (!response.chunks || !response.chunks.length)) {
@@ -295,6 +430,7 @@
         }
       }
 
+      feedback.beforeSpeech();
       if (typeof root.seq === 'function') {
         root.seq(finalChunks, root.again);
       }
@@ -306,6 +442,7 @@
         meta: lastMeta
       };
     } catch (err) {
+      feedback.stop();
       if (typeof fallbackFn === 'function') {
         fallbackFn(t, raw);
       }
@@ -314,6 +451,8 @@
         reason: String(err && err.message ? err.message : err),
         tool_results: toolResults
       };
+    } finally {
+      feedback.stop();
     }
   }
 

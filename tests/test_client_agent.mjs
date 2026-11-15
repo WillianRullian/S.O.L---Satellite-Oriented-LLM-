@@ -484,3 +484,44 @@ test('10. Mock satelital/pesquisa fora de escopo nunca trava e salva todo o cont
   assert.equal(rt2.A.area, 3);
   assert.ok(rt2.plan !== null);
 });
+
+test('11. Feedback visual progressivo e acessibilidade ARIA durante o processamento', async () => {
+  const rt = createSOLRuntime();
+  const statusHistory = [];
+  const origMsg = rt.msg;
+  rt.msg = (txt) => {
+    statusHistory.push(txt);
+    origMsg(txt);
+  };
+
+  let callCount = 0;
+  rt.SOLAgent.setTransport(async () => {
+    callCount += 1;
+    if (callCount === 1) {
+      return {
+        ok: true,
+        tool_calls: [
+          {
+            id: 'c_proc_1',
+            name: 'research_agronomic_mock',
+            arguments: { query: 'dados de satélite SMAP e NDVI', category: 'satellite_soil' }
+          }
+        ]
+      };
+    }
+    return {
+      ok: true,
+      text: 'Os satélites estimam umidade adequada para o milho hoje.'
+    };
+  });
+
+  rt.A = { area: 4, crop: 'Milho', pain: 'seca' };
+  rt.L = rt.FB;
+  rt.state = 'ready';
+
+  const res = await rt.handle(rt.norm('pode consultar os satélites para o meu milho?'), 'pode consultar os satélites para o meu milho?');
+  assert.equal(res.mode, 'agent');
+  assert.ok(statusHistory.some((s) => /sat[eé]lit/i.test(s)), 'Deve exibir status de consulta a satélites');
+  assert.ok(statusHistory.some((s) => /analisando/i.test(s)), 'Deve exibir status de análise após ferramentas');
+  assert.ok(statusHistory.includes('Preparando a voz da Sol…'), 'Deve avisar preparação de voz antes do áudio');
+});
