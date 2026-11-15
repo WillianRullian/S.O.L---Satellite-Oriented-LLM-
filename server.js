@@ -6,7 +6,7 @@ const { ElevenLabsClient } = require("@elevenlabs/elevenlabs-js");
 
 const PORT = Number(process.env.PORT) || 3000;
 const DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9"; // Jessica - Young, Playful, Bright, Warm
-const client = new ElevenLabsClient();
+const client = process.env.ELEVENLABS_API_KEY ? new ElevenLabsClient() : null;
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
@@ -75,7 +75,11 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ ok: false, fallback: true, reason: "use_fastapi_or_offline_fallback" }));
   }
 
-  if (req.method === "POST" && req.url === "/api/tts") {
+  if (req.method === "POST" && pathname === "/api/tts") {
+    if (!client) {
+      res.writeHead(503, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "ELEVENLABS_API_KEY not configured" }));
+    }
     try {
       const { text, voiceId, previousText, nextText } = await readJson(req);
       if (!text || typeof text !== "string") {
