@@ -1,9 +1,10 @@
-# S.O.L. (Spoken Orbital Language / Sabedoria Orbital para a Lavoura)
+# S.O.L. (Satellite-Oriented LLM / LLM Orientado por Satélite)
 
 **Assistente de Inteligência Artificial Preditiva e Generativa Guiado por Voz para Decisão Agrícola e Adaptação Climática**
 
 | Campo | Informação |
 |---|---|
+| Significado da sigla | S.O.L. = Satellite-Oriented LLM (LLM Orientado por Satélite) |
 | Organização | B.I.G. Tech (Boundless Intelligence & Global Tech) |
 | Instituição | Departamento de Ciência da Computação, Universidade Estadual do Sudoeste da Bahia (UESB), Vitória da Conquista, Bahia, Brasil |
 | Evento | NASA Space Apps Challenge 2026 |
@@ -39,13 +40,13 @@ Produtores rurais, em especial agricultores familiares, enfrentam simultaneament
 
 ### Solução
 
-O S.O.L. atua como ponte entre a telemetria orbital da NASA e o campo, por meio de uma interface **100% guiada por voz (Voice-First UI)**.
+O S.O.L. (Satellite-Oriented LLM) é um modelo de linguagem orientado por dados de satélite. Ele atua como ponte entre a telemetria orbital da NASA e o campo, por meio de uma interface **100% guiada por voz (Voice-First UI)**.
 
 O sistema:
 
 1. coleta a geolocalização do produtor e a extensão da área produtiva;
 2. processa dados satelitais em modelos preditivos;
-3. utiliza um modelo generativo de linguagem para orientar o produtor verbalmente, em linguagem simples;
+3. utiliza um modelo generativo de linguagem, ancorado nesses dados, para orientar o produtor verbalmente, em linguagem simples;
 4. exibe gráficos comparativos de produção, água, solo e custo **apenas sob demanda**, por comando de voz.
 
 O objetivo do projeto é apoiar a decisão do produtor, e não substituí-la nem substituir o técnico agrícola local.
