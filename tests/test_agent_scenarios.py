@@ -2,9 +2,11 @@ import unittest
 from typing import Any, Dict, List
 
 from server.guardrails import (
+    detect_hallucination_or_nonsense,
     detect_pesticide_prescription_request,
     detect_prompt_injection,
     extract_allowed_numbers,
+    is_inaudible_or_noise,
     split_speech_chunks,
     verify_numeric_grounding,
 )
@@ -238,6 +240,23 @@ class TestSOLServerAndGuardrails(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ok_words)
         self.assertIn(500.0, ungrounded_words)
         self.assertIn(20.0, ungrounded_words)
+
+    async def test_10_anti_hallucination_and_noise_guardrails(self):
+        self.assertTrue(is_inaudible_or_noise(""))
+        self.assertTrue(is_inaudible_or_noise("hmm"))
+        self.assertFalse(is_inaudible_or_noise("2"))
+        self.assertFalse(is_inaudible_or_noise("oi"))
+
+        has_leak, reason_leak = detect_hallucination_or_nonsense("<thought>thinking</thought> Veja em https://fake.site")
+        self.assertTrue(has_leak)
+        self.assertEqual(reason_leak, "internal_markup_or_url_leak")
+
+        has_loop, reason_loop = detect_hallucination_or_nonsense("chuva chuva chuva chuva chuva na lavoura")
+        self.assertTrue(has_loop)
+        self.assertEqual(reason_loop, "repetitive_token_loop")
+
+        ok_clean, _ = detect_hallucination_or_nonsense("Vamos acompanhar a umidade da sua terra com cuidado.")
+        self.assertFalse(ok_clean)
 
 
 if __name__ == "__main__":

@@ -320,15 +320,57 @@ function runPitchDemo(){
    msg('Apresentação concluída · toque no microfone para testar ao vivo')})})}
 
 /* ================= voz: ouvir ================= */
+var speechCommitTimer=null;
 function listen(){var R=window.SpeechRecognition||window.webkitSpeechRecognition;
  if(!R){msg('Este navegador não ouve voz. Use Chrome, Edge ou Safari.');return}
- tk++;stopAudio();if(rec){try{rec.abort()}catch(e){}}
- var r=rec=new R();r.lang='pt-BR';r.interimResults=true;mode('listen');msg('Ouvindo… pode falar');
- r.onresult=function(e){var x=e.results[e.results.length-1],t=x[0].transcript;if(!x.isFinal){msg('“'+t+'”');return}if(rec==r){nsp=0;handle(norm(t),t)}};
+ tk++;stopAudio();
+ if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}
+ window.__solUserSpeaking=false;
+ if(rec){try{rec.abort()}catch(e){}}
+ var r=rec=new R();r.lang='pt-BR';r.interimResults=true;r.continuous=true;
+ var PAUSE_MS=1900,lastFull='',flushed=false;
+ mode('listen');msg('Ouvindo… pode falar');
+ function collectSpeech(resList){
+  var finals=[],interims=[];
+  for(var i=0;i<resList.length;i++){
+   var item=resList[i],txt=(item&&item[0]&&item[0].transcript||'').trim();
+   if(!txt)continue;
+   if(item.isFinal)finals.push(txt);else interims.push(txt);
+  }
+  return {finalText:finals.join(' ').trim(),interimText:interims.join(' ').trim()};
+ }
+ function flushSpeech(){
+  if(flushed||rec!==r)return;
+  if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}
+  var clean=lastFull.trim();
+  window.__solUserSpeaking=false;
+  if(!clean){if($('orb').dataset.m=='listen')mode('idle');return}
+  flushed=true;nsp=0;
+  try{r.stop()}catch(e){}
+  handle(norm(clean),clean);
+ }
+ r.onspeechstart=function(){if(rec!=r)return;window.__solUserSpeaking=true;window.__solLastSpeechAt=Date.now();if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}};
+ r.onsoundstart=function(){if(rec!=r)return;window.__solUserSpeaking=true;window.__solLastSpeechAt=Date.now();if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}};
+ r.onresult=function(e){if(rec!=r||flushed)return;
+  if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}
+  var parsed=collectSpeech(e.results);
+  lastFull=[parsed.finalText,parsed.interimText].filter(Boolean).join(' ').trim();
+  window.__solLastSpeechAt=Date.now();
+  window.__solUserSpeaking=Boolean(parsed.interimText)||!parsed.finalText;
+  if(lastFull)msg('“'+lastFull+'”');
+  if(!parsed.interimText&&parsed.finalText){
+   speechCommitTimer=setTimeout(flushSpeech,PAUSE_MS);
+  }
+ };
+ r.onspeechend=function(){if(rec!=r||flushed)return;window.__solLastSpeechAt=Date.now();
+  if(lastFull&&!speechCommitTimer){window.__solUserSpeaking=false;speechCommitTimer=setTimeout(flushSpeech,PAUSE_MS)}
+ };
  r.onerror=function(e){if(rec!=r)return;
+  if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}
+  window.__solUserSpeaking=false;
   if(e.error=='not-allowed'||e.error=='service-not-allowed'){msg('Microfone bloqueado. Libere o microfone no navegador.');mode('idle');rec=null}
-  else if(e.error=='no-speech'){if(++nsp<3)setTimeout(function(){if(rec==r)listen()},300);else{msg('Toque no microfone para falar.');mode('idle')}}};
- r.onend=function(){if(rec==r&&$('orb').dataset.m=='listen')mode('idle')};
+  else if(e.error=='no-speech'){if(lastFull){flushSpeech()}else if(++nsp<3)setTimeout(function(){if(rec==r)listen()},300);else{msg('Toque no microfone para falar.');mode('idle')}}};
+ r.onend=function(){if(rec==r){window.__solUserSpeaking=false;if(lastFull&&!flushed){flushSpeech()}else if($('orb').dataset.m=='listen'){mode('idle')}}};
  try{r.start()}catch(e){}}
 function micTap(){if(!started)start();else listen()}
 

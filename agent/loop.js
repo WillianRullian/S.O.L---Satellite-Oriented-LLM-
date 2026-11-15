@@ -3,6 +3,46 @@
 
   var MAX_ITERATIONS = 4;
   var customTransport = null;
+  var latestTurnSeq = 0;
+
+  function isUserCurrentlySpeaking() {
+    if (root.__solUserSpeaking === true) return true;
+    if (typeof root.document !== 'undefined' && root.document && typeof root.document.getElementById === 'function') {
+      var orb = root.document.getElementById('orb');
+      if (orb && orb.dataset && orb.dataset.m === 'listen' && root.__solLastSpeechAt) {
+        if (Date.now() - root.__solLastSpeechAt < 1800) return true;
+      }
+    }
+    return false;
+  }
+
+  function waitWhileUserSpeaking(turnSeq) {
+    if (!isUserCurrentlySpeaking() || typeof setTimeout !== 'function') {
+      return Promise.resolve(turnSeq === latestTurnSeq);
+    }
+    var syncFired = false;
+    var probeId = setTimeout(function () { syncFired = true; }, 1);
+    if (typeof clearTimeout === 'function') clearTimeout(probeId);
+    // Avoid blocking synchronous VM test harnesses
+    if (syncFired) return Promise.resolve(turnSeq === latestTurnSeq);
+
+    return new Promise(function (resolve) {
+      var waited = 0;
+      function tick() {
+        if (turnSeq !== latestTurnSeq) {
+          resolve(false);
+          return;
+        }
+        if (!isUserCurrentlySpeaking() || waited >= 15000) {
+          resolve(turnSeq === latestTurnSeq);
+          return;
+        }
+        waited += 150;
+        setTimeout(tick, 150);
+      }
+      setTimeout(tick, 150);
+    });
+  }
 
   function inferImplicitToolCalls(t, userUtterance) {
     var norm = String(t || '').toLowerCase();
@@ -310,7 +350,15 @@
     }
 
     var userUtterance = String(raw || t || '').trim();
+    var myTurnSeq = ++latestTurnSeq;
     root._lastUserUtterance = userUtterance;
+    if (!userUtterance || (!/\d/.test(userUtterance) && userUtterance.replace(/[^a-zA-Z\u00C0-\u024F]/g, '').length < 2)) {
+      var clarifyChunks = ['Não consegui ouvir direitinho o que você falou. Pode repetir com calma?'];
+      if (typeof root.seq === 'function') {
+        root.seq(clarifyChunks, root.again);
+      }
+      return { mode: 'agent', chunks: clarifyChunks, tool_results: [], guardrail: 'inaudible_input' };
+    }
     if (
       memory &&
       typeof memory.restoreContextToRuntime === 'function' &&
@@ -432,6 +480,10 @@
         }
       }
 
+      if (finalChunks.length > 5) {
+        finalChunks = finalChunks.slice(0, 5);
+      }
+
       if (memory) {
         memory.extractFactsFromTurn(userUtterance, root.A);
         memory.recordTurn('user', userUtterance);
@@ -439,6 +491,17 @@
         if (typeof memory.saveContextSnapshot === 'function') {
           memory.saveContextSnapshot();
         }
+      }
+
+      var canSpeak = await waitWhileUserSpeaking(myTurnSeq);
+      if (!canSpeak || myTurnSeq !== latestTurnSeq) {
+        feedback.stop();
+        return {
+          mode: 'superseded',
+          reason: 'user_still_speaking_or_newer_turn',
+          chunks: finalChunks,
+          tool_results: toolResults
+        };
       }
 
       feedback.beforeSpeech();
@@ -454,7 +517,7 @@
       };
     } catch (err) {
       feedback.stop();
-      if (typeof fallbackFn === 'function') {
+      if (myTurnSeq === latestTurnSeq && !isUserCurrentlySpeaking() && typeof fallbackFn === 'function') {
         fallbackFn(t, raw);
       }
       return {

@@ -610,3 +610,87 @@ test('13. Sol não presume roça ou fazenda antes de conhecer o usuário e espel
   assert.equal(summaryDepois.property_type, 'sitio');
   assert.ok(promptDepois.includes('Tipo de espaço informado pelo usuário: sitio'), 'Após usuário informar sítio, deve personalizar contexto');
 });
+
+test('14. Escuta contínua não corta agricultor durante pausas e Sol aguarda fim da fala antes de responder', async () => {
+  const rt = createSOLRuntime();
+  rt.setTimeout = globalThis.setTimeout;
+  rt.clearTimeout = globalThis.clearTimeout;
+
+  let activeRecInstance = null;
+  class MockSpeechRecognition {
+    constructor() {
+      this.lang = '';
+      this.interimResults = false;
+      this.continuous = false;
+      activeRecInstance = this;
+    }
+    start() {}
+    stop() {}
+    abort() {}
+  }
+  rt.SpeechRecognition = MockSpeechRecognition;
+
+  const receivedUtterances = [];
+  let seqCalledWhileSpeaking = false;
+
+  rt.SOLAgent.setTransport(async (payload) => {
+    receivedUtterances.push(payload.raw_transcript);
+    return { ok: true, text: 'Entendi direitinho todo o seu relato! Vamos cuidar do solo juntos.' };
+  });
+
+  // Patch handle spy via seq observation while __solUserSpeaking transitions
+  const origSeq = rt.seq;
+  rt.seq = function (arr, cb) {
+    if (rt.__solUserSpeaking === true) {
+      seqCalledWhileSpeaking = true;
+    }
+    return origSeq(arr, cb);
+  };
+
+  rt.listen();
+  assert.ok(activeRecInstance, 'SpeechRecognition deve ser instanciado');
+  assert.equal(activeRecInstance.continuous, true, 'Escuta deve ativar modo contínuo para falas longas');
+
+  // Segmento 1 com pausa curta (< 1900ms) não deve disparar handle ainda
+  activeRecInstance.onspeechstart();
+  activeRecInstance.onresult({
+    results: [{ isFinal: true, 0: { transcript: 'Eu tenho cinco hectares de milho' } }]
+  });
+  await new Promise((r) => globalThis.setTimeout(r, 350));
+  assert.equal(receivedUtterances.length, 0, 'Não deve cortar o produtor durante pausa curta');
+
+  // Segmento 2 enquanto continua falando
+  activeRecInstance.onresult({
+    results: [
+      { isFinal: true, 0: { transcript: 'Eu tenho cinco hectares de milho' } },
+      { isFinal: false, 0: { transcript: 'e também quero cuidar' } }
+    ]
+  });
+  assert.equal(rt.__solUserSpeaking, true);
+  assert.equal(receivedUtterances.length, 0);
+
+  // Finaliza fala e aguarda janela de silêncio completa (> 1900ms)
+  activeRecInstance.onresult({
+    results: [
+      { isFinal: true, 0: { transcript: 'Eu tenho cinco hectares de milho' } },
+      { isFinal: true, 0: { transcript: 'e também quero cuidar melhor do solo' } }
+    ]
+  });
+
+  await new Promise((r) => globalThis.setTimeout(r, 2100));
+  assert.equal(receivedUtterances.length, 1, 'Deve enviar a fala completa somente após silêncio');
+  assert.equal(
+    receivedUtterances[0],
+    'Eu tenho cinco hectares de milho e também quero cuidar melhor do solo'
+  );
+
+  // Agora testa diretamente proteção no agente caso o usuário volte a falar enquanto agente processa
+  rt.__solUserSpeaking = true;
+  const turnPromise = rt.handle(rt.norm('outra dúvida rápida'), 'outra dúvida rápida');
+  await new Promise((r) => globalThis.setTimeout(r, 250));
+  assert.equal(seqCalledWhileSpeaking, false, 'Sol não deve chamar seq() enquanto __solUserSpeaking estiver true');
+  rt.__solUserSpeaking = false;
+  const res = await turnPromise;
+  assert.equal(res.mode, 'agent');
+  assert.equal(seqCalledWhileSpeaking, false);
+});
