@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 
-function createSOLRuntime(sharedStorage) {
+function createSOLRuntime(sharedStorage, options = {}) {
   const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const inlineScriptMatch = indexHtml.match(/<script>([\s\S]*?)<\/script>/);
   assert.ok(inlineScriptMatch, 'Inline script in index.html must exist');
@@ -85,8 +85,10 @@ function createSOLRuntime(sharedStorage) {
     isFinite,
     encodeURIComponent,
     decodeURIComponent,
-    setTimeout: (fn) => { fn(); return 1; },
-    clearTimeout: () => {},
+    setTimeout: options.useRealTimers ? globalThis.setTimeout : (fn) => { fn(); return 1; },
+    clearTimeout: options.useRealTimers ? globalThis.clearTimeout : () => {},
+    setInterval: options.useRealTimers ? globalThis.setInterval : undefined,
+    clearInterval: options.useRealTimers ? globalThis.clearInterval : undefined,
     btoa: (str) => Buffer.from(str, 'binary').toString('base64'),
     atob: (b64) => Buffer.from(b64, 'base64').toString('binary'),
     location: { protocol: 'http:', search: '' },
@@ -524,4 +526,88 @@ test('11. Feedback visual progressivo e acessibilidade ARIA durante o processame
   assert.ok(statusHistory.some((s) => /sat[eé]lit/i.test(s)), 'Deve exibir status de consulta a satélites');
   assert.ok(statusHistory.some((s) => /analisando/i.test(s)), 'Deve exibir status de análise após ferramentas');
   assert.ok(statusHistory.includes('Preparando a voz da Sol…'), 'Deve avisar preparação de voz antes do áudio');
+});
+
+test('12. Feedback de voz durante pensamento não atropela nem repete frases', async () => {
+  const rt = createSOLRuntime(undefined, { useRealTimers: true });
+
+  let activeAudioCount = 0;
+  let overlapDetected = false;
+  const fillerPhrases = [];
+  const finalEvents = [];
+
+  rt.say = function (txt, cb) {
+    if (activeAudioCount > 0) {
+      overlapDetected = true;
+    }
+    activeAudioCount += 1;
+    fillerPhrases.push(String(txt));
+    rt.spokenHistory.push(String(txt));
+    globalThis.setTimeout(() => {
+      activeAudioCount -= 1;
+      if (typeof cb === 'function') cb();
+    }, 120);
+  };
+
+  rt.seq = function (arr, cb) {
+    if (activeAudioCount > 0) {
+      overlapDetected = true;
+    }
+    (arr || []).forEach((s) => {
+      finalEvents.push(String(s));
+      rt.spokenHistory.push(String(s));
+    });
+    if (typeof cb === 'function') cb();
+  };
+
+  // Turn 1: resposta demorada (> 2200ms) com ferramenta de satélite para disparar mais de 1 frase de voz
+  let turn1Calls = 0;
+  rt.SOLAgent.setTransport(async () => {
+    turn1Calls += 1;
+    if (turn1Calls === 1) {
+      await new Promise((r) => globalThis.setTimeout(r, 600));
+      return {
+        ok: true,
+        tool_calls: [
+          {
+            id: 'c_voice_1',
+            name: 'research_agronomic_mock',
+            arguments: { query: 'umidade SMAP para milho', category: 'satellite_soil' }
+          }
+        ]
+      };
+    }
+    await new Promise((r) => globalThis.setTimeout(r, 1750));
+    return {
+      ok: true,
+      text: 'Os satélites indicam umidade regular no solo para o seu milho.'
+    };
+  });
+
+  rt.A = { area: 4, crop: 'Milho', pain: 'seca' };
+  rt.L = rt.FB;
+  rt.state = 'ready';
+
+  const res1 = await rt.handle(rt.norm('como está o satélite hoje?'), 'como está o satélite hoje?');
+  assert.equal(res1.mode, 'agent');
+  assert.ok(fillerPhrases.length >= 2, `Esperava ao menos 2 frases de pensamento, veio ${fillerPhrases.length}`);
+
+  // Turn 2: novo turno demorado não deve repetir nenhuma frase usada no Turn 1
+  const countBeforeTurn2 = fillerPhrases.length;
+  rt.SOLAgent.setTransport(async () => {
+    await new Promise((r) => globalThis.setTimeout(r, 620));
+    return {
+      ok: true,
+      text: 'Mantenha a palhada sobre a terra para conservar água.'
+    };
+  });
+
+  const res2 = await rt.handle(rt.norm('e o que faço com o solo?'), 'e o que faço com o solo?');
+  assert.equal(res2.mode, 'agent');
+  assert.ok(fillerPhrases.length > countBeforeTurn2, 'Turno 2 também deve emitir feedback de voz');
+  assert.equal(overlapDetected, false, 'Nenhuma frase pode se atropelar durante a fala');
+  assert.equal(new Set(fillerPhrases).size, fillerPhrases.length, 'Frases de feedback não devem se repetir entre si');
+  assert.ok(finalEvents.length >= 2, 'Respostas finais devem ser entregues ao seq()');
+  assertAllSpokenNumbersGrounded(rt, res1);
+  assertAllSpokenNumbersGrounded(rt, res2);
 });
