@@ -1,0 +1,80 @@
+{
+  "default_policy": "auto",
+  "fallback_chain": [
+    "gemini-flash",
+    "openai-mini",
+    "gemini-pro",
+    "openai-flagship",
+    "ollama-local"
+  ],
+  "routing_policy": {
+    "simple_turn_default": "gemini-flash",
+    "simple_turn_cloud_fallback": "ollama-local",
+    "reasoning_turn_default": "gemini-pro",
+    "reasoning_turn_secondary": "gemini-flash"
+  },
+  "models": [
+    {
+      "id": "gemini-flash",
+      "provider": "gemini",
+      "model_name": "gemini-3.5-flash-lite",
+      "aliases": ["gemini-2.5-flash", "gemini-flash-latest"],
+      "relative_cost": "low",
+      "cost_score": 1,
+      "expected_latency_ms": 650,
+      "supports_tools": true,
+      "local": false,
+      "tier": "fast",
+      "description": "Modelo rápido e leve do Google Gemini para coleta de slots, comandos visuais e respostas curtas."
+    },
+    {
+      "id": "gemini-pro",
+      "provider": "gemini",
+      "model_name": "gemini-3.5-flash",
+      "aliases": ["gemini-2.5-pro", "gemini-pro-latest"],
+      "relative_cost": "medium",
+      "cost_score": 3,
+      "expected_latency_ms": 950,
+      "supports_tools": true,
+      "local": false,
+      "tier": "reasoning",
+      "description": "Modelo avançado do Google Gemini para diagnóstico agronômico, perguntas fora do roteiro e adaptação técnica."
+    },
+    {
+      "id": "openai-mini",
+      "provider": "openai",
+      "model_name": "gpt-4o-mini",
+      "relative_cost": "low",
+      "cost_score": 1,
+      "expected_latency_ms": 700,
+      "supports_tools": true,
+      "local": false,
+      "tier": "fast",
+      "description": "Modelo leve da OpenAI com baixa latência e suporte nativo a function calling."
+    },
+    {
+      "id": "openai-flagship",
+      "provider": "openai",
+      "model_name": "gpt-4o",
+      "relative_cost": "high",
+      "cost_score": 4,
+      "expected_latency_ms": 1350,
+      "supports_tools": true,
+      "local": false,
+      "tier": "reasoning",
+      "description": "Modelo principal da OpenAI para raciocínio agronômico multicritério e explicação detalhada."
+    },
+    {
+      "id": "ollama-local",
+      "provider": "ollama",
+      "model_name": "llama3.1:8b",
+      "relative_cost": "free",
+      "cost_score": 0,
+      "expected_latency_ms": 550,
+      "supports_tools": true,
+      "local": true,
+      "tier": "fast",
+      "description": "Modelo local executado via Ollama sem custo de API e sem saída de dados da máquina."
+    }
+  ]
+}
