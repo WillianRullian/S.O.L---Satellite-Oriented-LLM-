@@ -29,6 +29,7 @@ function createSOLRuntime(sharedStorage) {
         }
       }
     },
+    stopBtn: { hidden: true },
     viz: { hidden: true, innerHTML: '' },
     app: {
       classList: {
@@ -693,4 +694,23 @@ test('14. Escuta contínua não corta agricultor durante pausas e Sol aguarda fi
   const res = await turnPromise;
   assert.equal(res.mode, 'agent');
   assert.equal(seqCalledWhileSpeaking, false);
+});
+
+test('15. Botão de parar aparece apenas durante mode("talk") e interrompe a fala em stopSol()', async () => {
+  const rt = createSOLRuntime();
+  assert.equal(rt.elements.stopBtn.hidden, true, 'Botão de parar deve iniciar oculto em idle');
+
+  rt.mode('listen');
+  assert.equal(rt.elements.stopBtn.hidden, true, 'Botão de parar deve ficar oculto enquanto ouve');
+
+  rt.mode('talk');
+  assert.equal(rt.elements.stopBtn.hidden, false, 'Botão de parar deve aparecer quando a Sol está falando');
+  assert.equal(rt.elements.orb.dataset.m, 'talk');
+
+  const prevTk = rt.tk;
+  rt.stopSol();
+  assert.ok(rt.tk > prevTk, 'stopSol deve invalidar fila de fala incrementando tk');
+  assert.equal(rt.elements.orb.dataset.m, 'idle');
+  assert.equal(rt.elements.stopBtn.hidden, true, 'Botão de parar deve voltar a ficar oculto após parar');
+  assert.equal(rt.elements.hint.textContent, 'Fala interrompida. Toque no microfone para falar.');
 });
