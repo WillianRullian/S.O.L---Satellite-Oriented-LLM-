@@ -130,7 +130,7 @@ function createSOLRuntime(sharedStorage) {
     if (cb) cb();
   };
 
-  for (const file of ['prompts.js', 'memory.js', 'tools.js', 'loop.js']) {
+  for (const file of ['prompts.js', 'memory.js', 'tools.js', 'pitch.js', 'loop.js']) {
     const code = fs.readFileSync(path.join(ROOT, 'agent', file), 'utf8');
     vm.runInContext(code, sandbox);
   }
@@ -713,4 +713,59 @@ test('15. Botão de parar aparece apenas durante mode("talk") e interrompe a fal
   assert.equal(rt.elements.orb.dataset.m, 'idle');
   assert.equal(rt.elements.stopBtn.hidden, true, 'Botão de parar deve voltar a ficar oculto após parar');
   assert.equal(rt.elements.hint.textContent, 'Fala interrompida. Toque no microfone para falar.');
+});
+
+test('16. Modo Pitch (?pitch=1) responde o fluxo de investidores em 0ms sem LLM e envia perguntas abertas para a IA', async () => {
+  const rt = createSOLRuntime();
+  rt.SOL_PITCH_MODE = true;
+  let llmCalls = 0;
+
+  rt.SOLAgent.setTransport(async () => {
+    llmCalls += 1;
+    return {
+      ok: true,
+      text: 'Nosso modelo de receita é B2B2C gratuito ao pequeno produtor com licenciamento para cooperativas.'
+    };
+  });
+
+  // 1. Saudação / introdução instantânea
+  const rIntro = await rt.handle(rt.norm('oi sol'), 'Oi Sol');
+  assert.equal(llmCalls, 0);
+  assert.equal(rIntro.meta.pitch_scene, 'intro');
+  rt.spokenHistory.length = 0;
+
+  // 2. Multi-slot em uma única fala roda pipe() e build() em 0ms
+  const rFull = await rt.handle(rt.norm('tenho 3 tarefas de milho e o problema é a seca'), 'tenho 3 tarefas de milho e o problema é a seca');
+  assert.equal(llmCalls, 0);
+  assert.equal(rFull.meta.pitch_scene, 'full_analysis');
+  assert.ok(rt.plan !== null);
+  assertAllSpokenNumbersGrounded(rt, rFull);
+  rt.spokenHistory.length = 0;
+
+  // 3. Gráficos sob demanda em 0ms
+  const rViz = await rt.handle(rt.norm('mostrar graficos'), 'mostrar gráficos');
+  assert.equal(llmCalls, 0);
+  assert.equal(rt.elements.viz.hidden, false);
+  assert.equal(rViz.meta.pitch_scene, 'show_charts');
+  rt.spokenHistory.length = 0;
+
+  // 4. Recálculo dinâmico ao mudar área em 0ms
+  const rChg = await rt.handle(rt.norm('mudar area para 5 hectares'), 'mudar área para 5 hectares');
+  assert.equal(llmCalls, 0);
+  assert.equal(rt.A.area, 5);
+  assert.equal(rChg.meta.pitch_scene, 'change_area');
+  assertAllSpokenNumbersGrounded(rt, rChg);
+  rt.spokenHistory.length = 0;
+
+  // 5. Adaptação cognitiva para nível técnico em 0ms
+  const rTech = await rt.handle(rt.norm('qual o NDVI do MODIS e umidade SMAP para evapotranspiração?'), 'qual o NDVI do MODIS e umidade SMAP para evapotranspiração?');
+  assert.equal(llmCalls, 0);
+  assert.equal(rTech.meta.pitch_scene, 'technical_adaptation');
+  assertAllSpokenNumbersGrounded(rt, rTech);
+  rt.spokenHistory.length = 0;
+
+  // 6. Pergunta aberta inesperada de um investidor vai para o backend LLM
+  const rOpen = await rt.handle(rt.norm('como voces monetizam isso em cooperativas?'), 'como vocês monetizam isso em cooperativas?');
+  assert.equal(llmCalls, 1, 'Pergunta aberta fora do roteiro deve ir normalmente para o LLM');
+  assert.ok(rOpen.chunks.join(' ').includes('B2B2C'));
 });

@@ -380,7 +380,17 @@
     var feedback = createProcessingFeedback(userUtterance);
 
     try {
-      for (var iter = 0; iter < MAX_ITERATIONS; iter++) {
+      var pitchActive = root.SOLPitch && typeof root.SOLPitch.isPitchModeActive === 'function' && root.SOLPitch.isPitchModeActive();
+      if ((!customTransport || pitchActive) && root.SOLPitch && typeof root.SOLPitch.matchAndExecute === 'function') {
+        var fastPitch = root.SOLPitch.matchAndExecute(t, userUtterance, tools, prompts);
+        if (fastPitch && fastPitch.chunks && fastPitch.chunks.length) {
+          finalChunks = fastPitch.chunks;
+          toolResults = fastPitch.tool_results || [];
+          lastMeta = { selected_model_id: pitchActive ? 'pitch-fast-flow' : 'local-fast-path', tier: 'fast', pitch_scene: fastPitch.pitch_scene };
+        }
+      }
+
+      for (var iter = 0; !finalChunks && iter < MAX_ITERATIONS; iter++) {
         var stateContext = memory ? memory.buildStateContext() : {};
         var promptContext = memory ? memory.buildBudgetedPromptContext() : '';
 

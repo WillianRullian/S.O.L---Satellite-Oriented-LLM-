@@ -191,6 +191,7 @@ var voices=[],curAudio=null,audioCache=new Map(),hasServer=false;
    hasServer=true;
    if(!localStorage.getItem(VC_KEY)||VC.engine==='browser')VC.engine='eleven_server';
    var btn=$('betaBtn');if(btn)btn.innerHTML='<span class="beta-dot"></span>ElevenLabs v4';
+   if(window.SOLPitch&&typeof window.SOLPitch.warmupPitchAudio==='function'){window.SOLPitch.warmupPitchAudio()}
   }
  }).catch(function(){})})();
 
@@ -303,11 +304,21 @@ async function speakNeural(t,my,cb,ctx){
  }catch(e){speakBrowser(t,my,cb)}}
 
 /* ================= voz: falar ================= */
+function prefetchTts(t,prev,next){
+ if(!t||VC.engine!=='eleven_server'||typeof fetch!=='function'||typeof location!=='undefined'&&location.protocol==='file:')return;
+ var vid=VC.srvVoice||'cgSgspJ2msm6clMCkdW9',key=VC.engine+':'+vid+':'+t;
+ if(audioCache.has(key))return;
+ fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({text:t,voiceId:vid,previousText:prev||'',nextText:next||''})})
+ .then(function(r){return r.ok?r.blob():null})
+ .then(function(b){if(b&&typeof URL!=='undefined'&&URL.createObjectURL){audioCache.set(key,URL.createObjectURL(b))}})
+ .catch(function(){})}
 function say(t,cb,ctx){var my=++tk;if(rec){try{rec.abort()}catch(e){}}
  stopAudio();
  if(VC.engine==='eleven_server'||VC.engine==='openai'||VC.engine==='eleven')return speakNeural(t,my,cb,ctx);
  speakBrowser(t,my,cb)}
 function seq(a,cb,idx){var i=idx||0;if(i>=a.length){if(cb)cb();return}
+ if(i+1<a.length){prefetchTts(a[i+1],a[i],i+2<a.length?a[i+2]:'')}
  say(a[i],function(){seq(a,cb,i+1)},{prev:i>0?a[i-1]:'',next:i+1<a.length?a[i+1]:''})}
 function again(){listen()}
 
@@ -338,7 +349,7 @@ function listen(){var R=window.SpeechRecognition||window.webkitSpeechRecognition
  window.__solUserSpeaking=false;
  if(rec){try{rec.abort()}catch(e){}}
  var r=rec=new R();r.lang='pt-BR';r.interimResults=true;r.continuous=true;
- var PAUSE_MS=1900,lastFull='',flushed=false;
+ var PAUSE_MS=1200,lastFull='',flushed=false;
  mode('listen');msg('Ouvindo… pode falar');
  function collectSpeech(resList){
   var finals=[],interims=[];
@@ -512,6 +523,7 @@ function renderViz(){var P=plan,B=P.S[sel],mx=Math.max.apply(0,P.S.map(function(
 <script src="agent/prompts.js"></script>
 <script src="agent/memory.js"></script>
 <script src="agent/tools.js"></script>
+<script src="agent/pitch.js"></script>
 <script src="agent/loop.js"></script>
 </body>
 </html>
