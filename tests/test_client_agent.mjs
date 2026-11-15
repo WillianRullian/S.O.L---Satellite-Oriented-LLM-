@@ -574,6 +574,39 @@ test('12. Memória seletiva captura contexto humano e produtivo do pequeno agric
   assert.ok(capturedSummary.resources_and_strengths.length >= 2, 'Deve extrair recursos disponíveis e saberes tradicionais');
   assert.ok(capturedSummary.family_and_market.length >= 2, 'Deve extrair contexto familiar e canal de venda');
   assert.ok(capturedSummary.constraints_and_history.length >= 1, 'Deve extrair limitações práticas');
-  assert.ok(capturedPrompt.includes('PERFIL HUMANO E PRODUTIVO DO PEQUENO AGRICULTOR'));
+  assert.ok(capturedPrompt.includes('PERFIL HUMANO E PRODUTIVO DO USUÁRIO'));
   assertAllSpokenNumbersGrounded(rt2, res2);
+});
+
+test('13. Sol não presume roça ou fazenda antes de conhecer o usuário e espelha o contexto quando revelado', async () => {
+  const sharedStorage = new Map();
+  const rt = createSOLRuntime(sharedStorage);
+  let promptAntes = '';
+  let promptDepois = '';
+  let summaryDepois = null;
+
+  let step = 0;
+  rt.SOLAgent.setTransport(async (payload) => {
+    step += 1;
+    if (step === 1) {
+      promptAntes = payload.system_prompt;
+      return {
+        ok: true,
+        text: 'Oi! Prazer falar com você. Como é o espaço onde você está plantando hoje?'
+      };
+    }
+    promptDepois = payload.system_prompt;
+    summaryDepois = payload.state_context.farmer_profile_summary;
+    return {
+      ok: true,
+      text: 'Que legal cuidar do seu sítio com a sua família! Vamos ver o melhor caminho para a sua área.'
+    };
+  });
+
+  await rt.handle(rt.norm('oi quero melhorar meu plantio'), 'oi quero melhorar meu plantio');
+  assert.ok(promptAntes.includes('NÃO suponha "roça", "fazenda"'), 'Sem contexto inicial, deve orientar a não supor roça nem fazenda');
+
+  await rt.handle(rt.norm('eu tenho um sitio pequeno aqui no interior'), 'eu tenho um sitio pequeno aqui no interior');
+  assert.equal(summaryDepois.property_type, 'sitio');
+  assert.ok(promptDepois.includes('Tipo de espaço informado pelo usuário: sitio'), 'Após usuário informar sítio, deve personalizar contexto');
 });

@@ -6,7 +6,7 @@
   var MAX_FACTS = 24;
   var MAX_RECENT_TURNS = 12;
   var MAX_RESEARCH_NOTES = 8;
-  var SINGLE_VALUE_CATEGORIES = { area: 1, crop: 1, pain: 1, knowledge_level: 1 };
+  var SINGLE_VALUE_CATEGORIES = { area: 1, crop: 1, pain: 1, knowledge_level: 1, property_type: 1 };
   var MULTI_VALUE_CAP_BY_CATEGORY = {
     goal: 3,
     resources: 4,
@@ -271,8 +271,14 @@
       added.push(insertFact('Dificuldade principal: ' + slots.pain, 'pain', 'stated', true));
     }
 
+    // Property / productive space type (only set when explicitly revealed by the user)
+    var propMatch = norm.match(/\b(fazenda|sitio|roca|chacara|horta|quintal|lote|assentamento|granja|estufa|agrofloresta|estancia)\b/);
+    if (propMatch) {
+      added.push(insertFact('Tipo de espaço produtivo: ' + propMatch[1], 'property_type', 'stated', true));
+    }
+
     // Smallholder goals, dreams and growth targets
-    if (/\b(quero|queria|meu sonho|objetivo|meta|preciso|aumentar a renda|viver da roca|melhorar a colheita|crescer|diversificar|vender mais|sustentar|alimentar a familia)\b/.test(norm)) {
+    if (/\b(quero|queria|meu sonho|objetivo|meta|preciso|aumentar a renda|viver da roca|viver da terra|viver do campo|melhorar a colheita|crescer|diversificar|vender mais|sustentar|alimentar a familia)\b/.test(norm)) {
       added.push(insertFact('Objetivo do produtor: ' + raw.slice(0, 120), 'goal', 'stated', true));
     }
 
@@ -349,7 +355,15 @@
 
   function buildFarmerProfileSummary() {
     var isTechnical = memoryState.facts.some(function (f) { return f.category === 'knowledge_level'; });
+    var propFact = null;
+    for (var i = memoryState.facts.length - 1; i >= 0; i--) {
+      if (memoryState.facts[i].category === 'property_type') {
+        propFact = memoryState.facts[i].fact.replace(/^Tipo de espaço produtivo:\s*/i, '');
+        break;
+      }
+    }
     return {
+      property_type: propFact,
       goals: groupFactsByCategory(['goal']),
       resources_and_strengths: groupFactsByCategory(['resources', 'tools', 'traditions']),
       family_and_market: groupFactsByCategory(['family_context', 'market_channel']),
@@ -439,7 +453,10 @@
       '- Coordenada aproximada (LGPD grade 0.1°): ' + (ctx.rounded_location ? ctx.rounded_location.lat + ', ' + ctx.rounded_location.lon : 'Nordeste')
     ];
 
-    lines.push('PERFIL HUMANO E PRODUTIVO DO PEQUENO AGRICULTOR (ADAPTE E APROVEITE O QUE ELE JÁ TEM):');
+    lines.push('PERFIL HUMANO E PRODUTIVO DO USUÁRIO (CONHEÇA E ADAPTE AO CONTEXTO PARTICULAR DELE):');
+    lines.push(fp.property_type
+      ? '- Tipo de espaço informado pelo usuário: ' + fp.property_type + ' — use esse contexto particular e o vocabulário correspondente na conversa.'
+      : '- Tipo de espaço produtivo: ainda não informado — NÃO suponha "roça", "fazenda" ou porte; converse como amiga que está conhecendo a pessoa agora usando termos abertos ("sua terra", "sua área", "seu plantio", "seu espaço").');
     lines.push('- Registro de comunicação: ' + (fp.communication_register === 'technical'
       ? 'Técnico/orbital — pode usar métricas científicas explicando implicações práticas'
       : 'Prático/popular — linguagem simples, calorosa, sem jargões nem infantilização, valorizando saberes locais'));

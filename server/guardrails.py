@@ -39,8 +39,8 @@ def detect_pesticide_prescription_request(text: str) -> bool:
 
 
 SAFE_INJECTION_RESPONSE = [
-    "Eu sou a Sol, sua parceira no campo, e sigo regras firmes de segurança para cuidar da sua lavoura.",
-    "Me conte o tamanho da sua área, o que você planta ou sua dúvida sobre a roça que a gente resolve juntos!"
+    "Eu sou a Sol, sua parceira no campo, e sigo regras firmes de segurança para cuidar da sua área.",
+    "Me conte o tamanho da sua terra, o que você planta ou sua dúvida que a gente resolve juntos!"
 ]
 
 SAFE_PESTICIDE_RESPONSE = [

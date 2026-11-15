@@ -117,7 +117,7 @@
             },
             category: {
               type: 'string',
-              description: 'Categoria opcional: goal, resources, family_context, constraints, market_channel, traditions, tools, past_issue, planting_season ou agronomic_fact.'
+              description: 'Categoria opcional: property_type, goal, resources, family_context, constraints, market_channel, traditions, tools, past_issue, planting_season ou agronomic_fact.'
             }
           },
           required: ['fato']
