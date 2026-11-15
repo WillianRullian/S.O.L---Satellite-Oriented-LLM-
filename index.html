@@ -303,14 +303,14 @@ function again(){listen()}
 
 function testVoice(){
  saveVoiceCfg();
- say('Oi! Eu sou a S.O.L., da B.I.G. Tech! É uma alegria caminhar com você pra fazer a sua lavoura crescer forte e bonita.')}
+ say('Oi! Eu sou a Sol, da Big Tech! É uma alegria caminhar com você pra fazer a sua lavoura crescer forte e bonita.')}
 
 function runPitchDemo(){
  closeBeta();started=true;state='ready';L=L||FB;
  A={area:3,crop:'Milho',pain:'seca'};
  plan=build();sel=plan.best;viz(false);
  seq([
-  'Oi, avaliadores! Que alegria ter vocês aqui! Eu sou a S.O.L., da B.I.G. Tech.',
+  'Oi, avaliadores! Que alegria ter vocês aqui! Eu sou a Sol, da Big Tech.',
   'Eu nasci pra ser a parceira do pequeno produtor, levando dados dos satélites da NASA direto pra roça, só pela voz, com carinho e clareza.',
   'Vamos imaginar juntos um produtor com três hectares de milho preocupado com a falta de chuva. Olhei a terra dele agora mesmo pelo satélite!'
  ],function(){
@@ -333,11 +333,11 @@ function listen(){var R=window.SpeechRecognition||window.webkitSpeechRecognition
 function micTap(){if(!started)start();else listen()}
 
 /* ================= início + localização ================= */
-var FEAT='Eu sou a S.O.L., sua parceira no campo! Uso satélites da NASA pra cuidar da sua terra junto com você. Me conta o tamanho da lavoura, o que você planta e o que mais te preocupa. Se quiser mudar a área, é só dizer: mudar área para dez hectares. E quando quiser ver os gráficos na tela, pode pedir que eu mostro na hora!';
+var FEAT='Eu sou a Sol, sua parceira no campo! Uso satélites da NASA pra cuidar da sua terra junto com você. Me conta o tamanho da lavoura, o que você planta e o que mais te preocupa. Se quiser mudar a área, é só dizer: mudar área para dez hectares. E quando quiser ver os gráficos na tela, pode pedir que eu mostro na hora!';
 function start(){started=true;state='intro';
  locP=new Promise(function(res){if(!navigator.geolocation)return res(null);
   navigator.geolocation.getCurrentPosition(function(p){res({lat:p.coords.latitude,lon:p.coords.longitude})},function(){res(null)},{timeout:8000,maximumAge:6e5})});
- seq(['Oi! Que alegria falar com você! Eu sou a S.O.L., da B.I.G. Tech. Tô aqui pra ser sua parceira na roça, usando os satélites da NASA pra cuidar da sua terra e fazer a sua colheita crescer forte!',
+ seq(['Oi! Que alegria falar com você! Eu sou a Sol, da Big Tech. Tô aqui pra ser sua parceira na roça, usando os satélites da NASA pra cuidar da sua terra e fazer a sua colheita crescer forte!',
   'É bem simples: você me conta o tamanho da sua lavoura e o que está plantando. Se precisar mudar a área depois, é só falar: mudar área para dez hectares. E se quiser ver os gráficos na tela, é só pedir!'],
   function(){locP.then(function(l){L=l||FB;
    seq([l?'Prontinho, já encontrei a sua terra pelo satélite! Vamos juntos.':'Não consegui pegar o GPS agora, mas sem problema! Vou usar uma região aqui do Nordeste pra gente começar.'],next)})})}

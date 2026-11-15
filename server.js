@@ -280,7 +280,7 @@ const server = http.createServer(async (req, res) => {
 
       if (detectPromptInjection(userInput)) {
         const chunks = [
-          "Eu sou a S.O.L., sua parceira no campo, e sigo regras firmes de segurança para cuidar da sua lavoura.",
+          "Eu sou a Sol, sua parceira no campo, e sigo regras firmes de segurança para cuidar da sua lavoura.",
           "Me conte o tamanho da sua área, o que você planta ou sua dúvida sobre a roça que a gente resolve juntos!",
         ];
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -366,8 +366,9 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(400, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ error: "Missing text" }));
       }
+      const cleanTts = (s) => SOLPrompts.sanitizeForSpeech(s);
       const opts = {
-        text,
+        text: cleanTts(text),
         modelId: "eleven_v4",
         outputFormat: "mp3_44100_128",
         voiceSettings: {
@@ -375,8 +376,8 @@ const server = http.createServer(async (req, res) => {
           similarityBoost: 0.75,
         },
       };
-      if (previousText) opts.previousText = previousText;
-      if (nextText) opts.nextText = nextText;
+      if (previousText) opts.previousText = cleanTts(previousText);
+      if (nextText) opts.nextText = cleanTts(nextText);
 
       const audio = await client.textToSpeech.convert(voiceId || DEFAULT_VOICE_ID, opts);
       res.writeHead(200, {

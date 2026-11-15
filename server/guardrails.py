@@ -39,7 +39,7 @@ def detect_pesticide_prescription_request(text: str) -> bool:
 
 
 SAFE_INJECTION_RESPONSE = [
-    "Eu sou a S.O.L., sua parceira no campo, e sigo regras firmes de segurança para cuidar da sua lavoura.",
+    "Eu sou a Sol, sua parceira no campo, e sigo regras firmes de segurança para cuidar da sua lavoura.",
     "Me conte o tamanho da sua área, o que você planta ou sua dúvida sobre a roça que a gente resolve juntos!"
 ]
 
@@ -114,9 +114,11 @@ def sanitize_spoken_text(text: str) -> str:
     if not text:
         return ""
     cleaned = EMOJI_RE.sub("", text)
-    # Normalize dotted acronyms so sentence splitters and TTS do not break on internal periods
-    cleaned = re.sub(r"\bS\.O\.L\.?", "SOL", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bB\.I\.G\.?", "BIG", cleaned, flags=re.IGNORECASE)
+    # Normalize dotted/uppercase acronyms to Title Case ("Sol", "Big") so TTS speaks them as natural words instead of spelling letters
+    cleaned = re.sub(r"\bS\.O\.L\.?", "Sol", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bSOL\b", "Sol", cleaned)
+    cleaned = re.sub(r"\bB\.I\.G\.?", "Big", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bBIG\b", "Big", cleaned)
     # Remove markdown formatting characters (*, _, #, `, ~, >, [ ], ( ))
     cleaned = re.sub(r"[*_#`~>|]", "", cleaned)
     cleaned = re.sub(r"^\s*[-•+]\s+", "", cleaned, flags=re.MULTILINE)
