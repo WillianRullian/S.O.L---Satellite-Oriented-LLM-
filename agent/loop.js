@@ -6,23 +6,33 @@
 
   function inferImplicitToolCalls(t, userUtterance) {
     var norm = String(t || '').toLowerCase();
+    var rawStr = String(userUtterance || '');
+    var isQuestion = /[?]|\b(por\s+que|como|e\s+se|posso|quando|qual|quais|vale|ajuda|explic|sera|funciona)\b/.test(norm);
+    var wordCount = norm.trim().split(/\s+/).filter(Boolean).length;
     var inferred = [];
-    if (/esconde|fech|ocult|sumir|limpa/.test(norm)) {
+
+    if (/esconde|fech|ocult|sumir|limpa/.test(norm) && wordCount <= 6) {
       inferred.push({ id: 'auto_hide', name: 'hide_charts', arguments: {} });
       return inferred;
     }
-    if (/grafic|mostr|ver (o )?plano|barra|na tela/.test(norm)) {
+    if (/grafic|mostr|ver (o )?plano|barra|na tela/.test(norm) && !isQuestion && wordCount <= 6) {
       inferred.push({ id: 'auto_show', name: 'show_charts', arguments: {} });
       return inferred;
     }
-    if (/(mud|alter|troc|corrig)\w*.*(area|tamanho|terra|lavoura)/.test(norm)) {
+    if (/(mud|alter|troc|corrig)\w*.*(area|tamanho|terra|lavoura)/.test(norm) && !isQuestion) {
       inferred.push({ id: 'auto_chg', name: 'change_area', arguments: { texto: userUtterance } });
       return inferred;
     }
-    if (root.plan && /\b(outro|outra\s+opcao|proxim)\b/.test(norm)) {
+    if (root.plan && /\b(outro|outra\s+opcao|proxim)\b/.test(norm) && !isQuestion && wordCount <= 6) {
       inferred.push({ id: 'auto_sw', name: 'switch_strategy', arguments: {} });
       return inferred;
     }
+
+    // Only infer field slots silently on short non-question onboarding replies
+    if (isQuestion || root.state === 'ready' || wordCount > 6) {
+      return [];
+    }
+
     var args = {};
     var hasSlot = false;
     if (typeof root.parseArea === 'function' && (root.state === 'area' || /hectare|\bha\b|tarefa|metro|m2|alqueire/.test(norm))) {
@@ -68,7 +78,7 @@
       throw new Error('fetch unavailable');
     }
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    var timer = controller ? setTimeout(function () { controller.abort(); }, 10000) : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, 15000) : null;
     try {
       var modelParam = payload.model ? '?model=' + encodeURIComponent(payload.model) : '';
       var res = await fetch('/api/agent/chat' + modelParam, {
@@ -225,10 +235,12 @@
             });
           }
 
-          // If the model only requested tools without final text, check if a 2nd LLM round-trip is needed
+          // Bypass 2nd LLM round-trip only for pure UI toggles (show/hide charts) or trivial <=3-word confirmations
           if (!response.text && (!response.chunks || !response.chunks.length)) {
-            var isOpenQuestion = /[?]|\b(por\s+que|como|e\s+se|posso|quando|qual|quais|explic|ndvi|smap|modis|ecostress|evapotranspiracao|deficit)\b/i.test(userUtterance);
-            if (!customTransport && !isOpenQuestion) {
+            var isPureUiCmd = calls.length === 1 && (calls[0].name === 'show_charts' || calls[0].name === 'hide_charts');
+            var wordsLen = userUtterance.split(/\s+/).filter(Boolean).length;
+            var isTrivialSlot = wordsLen <= 3 && !/[?]/.test(userUtterance) && calls.length === 1 && calls[0].name === 'set_field' && root.state !== 'ready';
+            if (!customTransport && (isPureUiCmd || isTrivialSlot)) {
               var fastChunks = synthesizeDeterministicFromTools(toolResults);
               if (fastChunks && fastChunks.length) {
                 finalChunks = fastChunks;

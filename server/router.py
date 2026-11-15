@@ -110,7 +110,7 @@ class ModelRouter:
         requested_model: Optional[str] = None,
         transcript: str = "",
         state_context: Optional[Dict[str, Any]] = None,
-        temperature: float = 0.2,
+        temperature: float = 0.45,
     ) -> Tuple[Optional[ProviderResponse], Dict[str, Any]]:
         candidates, tier = self.build_candidate_chain(
             requested_model=requested_model,

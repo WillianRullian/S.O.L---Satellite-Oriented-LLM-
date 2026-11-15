@@ -199,7 +199,7 @@ async function callGemini(messages, tools, systemPrompt, modelName) {
       contents.push({ role: "user", parts: [{ text: String(m.content || "") }] });
     }
   }
-  const genCfg = { temperature: 0.2, maxOutputTokens: 350 };
+  const genCfg = { temperature: 0.45, maxOutputTokens: 450 };
   if (!actualModel.includes("lite")) {
     genCfg.thinkingConfig = { thinkingBudget: 0 };
   }
@@ -337,7 +337,40 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ ok: false, fallback: true, reason: "no_provider_available" }));
       }
 
-      const chunks = resp.text ? SOLPrompts.splitSpeechChunks(resp.text, 200) : [];
+      let finalText = resp.text || "";
+      const toolCalls = resp.tool_calls || [];
+      if (finalText && toolCalls.length) {
+        const allowed = SOLPrompts.collectAllowedNumbers([body.tool_results || [], body.state_context || {}]);
+        if (!SOLPrompts.verifyNumericGrounding(finalText, allowed).valid) {
+          finalText = "";
+        }
+      } else if (finalText) {
+        const allowed = SOLPrompts.collectAllowedNumbers([body.tool_results || [], body.state_context || {}]);
+        [30, 35, 60, 100].forEach((c) => {
+          if (!allowed.includes(c)) allowed.push(c);
+        });
+        const chk = SOLPrompts.verifyNumericGrounding(finalText, allowed);
+        if (!chk.valid) {
+          try {
+            const rw = await callGemini(
+              [
+                {
+                  role: "user",
+                  content: `Reescreva a resposta abaixo mantendo exatamente o tom amigável, fluido e o sentido agronômico, mas substituindo por termos gerais (como "alguns dias", "várias semanas", "outra cultura") os números não autorizados ${JSON.stringify(chk.ungrounded)}. Resposta original: ${finalText}`,
+                },
+              ],
+              [],
+              "Você reescreve respostas curtas em português natural para leitura em voz alta, sem números inventados, sem markdown e em até 2 frases.",
+              "gemini-3.5-flash-lite"
+            );
+            if (rw && rw.text && SOLPrompts.verifyNumericGrounding(rw.text, allowed).valid) {
+              finalText = rw.text;
+            }
+          } catch {}
+        }
+      }
+
+      const chunks = finalText ? SOLPrompts.splitSpeechChunks(finalText, 200) : [];
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(
         JSON.stringify({
@@ -345,7 +378,7 @@ const server = http.createServer(async (req, res) => {
           fallback: false,
           text: chunks.join(" "),
           chunks,
-          tool_calls: resp.tool_calls || [],
+          tool_calls: toolCalls,
           meta: chosenMeta,
         })
       );

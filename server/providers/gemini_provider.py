@@ -88,6 +88,14 @@ def _convert_messages_to_gemini(messages: List[Dict[str, Any]]) -> List[Dict[str
 class GeminiProvider(BaseLLMProvider):
     provider_name = "gemini"
 
+    def __init__(self) -> None:
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=12.0)
+        return self._client
+
     def is_configured(self) -> bool:
         return bool(settings.gemini_api_key)
 
@@ -97,7 +105,7 @@ class GeminiProvider(BaseLLMProvider):
         tools: List[Dict[str, Any]],
         system_prompt: str,
         model_name: str,
-        temperature: float = 0.2,
+        temperature: float = 0.45,
     ) -> ProviderResponse:
         if not self.is_configured():
             raise RuntimeError("GEMINI_API_KEY not configured")
@@ -109,7 +117,7 @@ class GeminiProvider(BaseLLMProvider):
         )
         gen_cfg: Dict[str, Any] = {
             "temperature": temperature,
-            "maxOutputTokens": 350,
+            "maxOutputTokens": 450,
         }
         if "lite" not in actual_model:
             gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
@@ -123,10 +131,10 @@ class GeminiProvider(BaseLLMProvider):
         if tools:
             payload["tools"] = _convert_tools_to_gemini(tools)
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+        client = self._get_client()
+        resp = await client.post(url, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
 
         text_parts: List[str] = []
         tool_calls: List[Dict[str, Any]] = []

@@ -4,7 +4,7 @@
   var STORAGE_KEY = 'sol_agent_profile_enc_v1';
   var DEVICE_SALT_KEY = 'sol_agent_device_salt_v1';
   var MAX_FACTS = 12;
-  var MAX_RECENT_TURNS = 4;
+  var MAX_RECENT_TURNS = 12;
 
   var memoryState = {
     facts: [],
@@ -171,7 +171,7 @@
     if (!cleaned) return;
     memoryState.recentTurns.push({
       role: role === 'assistant' ? 'assistant' : 'user',
-      content: cleaned.slice(0, 240)
+      content: cleaned.slice(0, 420)
     });
     if (memoryState.recentTurns.length > MAX_RECENT_TURNS) {
       memoryState.recentTurns = memoryState.recentTurns.slice(-MAX_RECENT_TURNS);
