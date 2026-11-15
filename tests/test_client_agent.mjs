@@ -525,3 +525,55 @@ test('11. Feedback visual progressivo e acessibilidade ARIA durante o processame
   assert.ok(statusHistory.some((s) => /analisando/i.test(s)), 'Deve exibir status de análise após ferramentas');
   assert.ok(statusHistory.includes('Preparando a voz da Sol…'), 'Deve avisar preparação de voz antes do áudio');
 });
+
+test('12. Memória seletiva captura contexto humano e produtivo do pequeno agricultor e restaura entre sessões', async () => {
+  const sharedStorage = new Map();
+  const rt1 = createSOLRuntime(sharedStorage);
+
+  rt1.A = { area: 2, crop: 'Milho', pain: 'seca' };
+  rt1.L = rt1.FB;
+  rt1.plan = rt1.build();
+  rt1.state = 'ready';
+
+  const falaProdutor = 'Trabalho com minha esposa e meu filho, temos uma cisterna e esterco de galinha, mas pouco dinheiro pra investir. Quero vender na feira pra aumentar a renda, usando cobertura morta como meu pai fazia.';
+  let capturedPrompt = '';
+  let capturedSummary = null;
+
+  rt1.SOLAgent.setTransport(async (payload) => {
+    capturedPrompt = payload.system_prompt;
+    capturedSummary = payload.state_context.farmer_profile_summary;
+    return {
+      ok: true,
+      text: 'Que força bonita você já tem com a família, a cisterna e o esterco de galinha! Dá para fortalecer sua cobertura morta sem gastar muito e mirar a venda na feira.'
+    };
+  });
+
+  const res1 = await rt1.handle(rt1.norm(falaProdutor), falaProdutor);
+  assert.equal(res1.mode, 'agent');
+
+  // Ruído curto não deve poluir a memória seletiva
+  const noiseAdded = rt1.SOLMemory.extractFactsFromTurn('hum', rt1.A);
+  assert.equal(noiseAdded.length, 0, 'Ruído/hesitação deve ser descartado');
+
+  // Nova sessão simulando recarregamento deve restaurar automaticamente os slots e sintetizar o perfil humano no prompt
+  const rt2 = createSOLRuntime(sharedStorage);
+  rt2.SOLAgent.setTransport(async (payload) => {
+    capturedPrompt = payload.system_prompt;
+    capturedSummary = payload.state_context.farmer_profile_summary;
+    return {
+      ok: true,
+      text: 'Continuando do seu milho, aproveite o esterco e a cisterna para segurar a umidade e planejar a feira.'
+    };
+  });
+
+  const res2 = await rt2.handle(rt2.norm('qual o próximo passo para essa semana?'), 'qual o próximo passo para essa semana?');
+  assert.equal(res2.mode, 'agent');
+  assert.equal(rt2.A.crop, 'Milho');
+  assert.equal(rt2.A.area, 2);
+  assert.ok(capturedSummary.goals.length >= 1, 'Deve extrair meta/objetivo do produtor');
+  assert.ok(capturedSummary.resources_and_strengths.length >= 2, 'Deve extrair recursos disponíveis e saberes tradicionais');
+  assert.ok(capturedSummary.family_and_market.length >= 2, 'Deve extrair contexto familiar e canal de venda');
+  assert.ok(capturedSummary.constraints_and_history.length >= 1, 'Deve extrair limitações práticas');
+  assert.ok(capturedPrompt.includes('PERFIL HUMANO E PRODUTIVO DO PEQUENO AGRICULTOR'));
+  assertAllSpokenNumbersGrounded(rt2, res2);
+});

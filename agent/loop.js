@@ -311,6 +311,17 @@
 
     var userUtterance = String(raw || t || '').trim();
     root._lastUserUtterance = userUtterance;
+    if (
+      memory &&
+      typeof memory.restoreContextToRuntime === 'function' &&
+      root.A && root.A.area == null && !root.A.crop && !root.A.pain &&
+      !/\b(recome|do zero|reinici)\b/.test(String(t || '').toLowerCase())
+    ) {
+      memory.restoreContextToRuntime();
+    }
+    if (memory && typeof memory.extractFactsFromTurn === 'function') {
+      memory.extractFactsFromTurn(userUtterance, root.A);
+    }
     var chosenModel = getSelectedModel();
     var messages = memory ? memory.getRecentTurns() : [];
     messages.push({ role: 'user', content: userUtterance });

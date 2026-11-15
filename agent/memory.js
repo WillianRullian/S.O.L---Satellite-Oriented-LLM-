@@ -3,9 +3,21 @@
 
   var STORAGE_KEY = 'sol_agent_profile_enc_v1';
   var DEVICE_SALT_KEY = 'sol_agent_device_salt_v1';
-  var MAX_FACTS = 12;
+  var MAX_FACTS = 24;
   var MAX_RECENT_TURNS = 12;
   var MAX_RESEARCH_NOTES = 8;
+  var SINGLE_VALUE_CATEGORIES = { area: 1, crop: 1, pain: 1, knowledge_level: 1 };
+  var MULTI_VALUE_CAP_BY_CATEGORY = {
+    goal: 3,
+    resources: 4,
+    family_context: 2,
+    constraints: 3,
+    market_channel: 2,
+    traditions: 3,
+    tools: 3,
+    past_issue: 3,
+    planting_season: 2
+  };
 
   var memoryState = {
     facts: [],
@@ -198,7 +210,7 @@
     return entry;
   }
 
-  function remember(factText, category, origin) {
+  function insertFact(factText, category, origin, skipSave) {
     var cleaned = String(factText || '').trim();
     if (!cleaned || cleaned.length < 3) return null;
     var cat = category || 'agronomic_fact';
@@ -210,54 +222,113 @@
       date: todayISO()
     };
 
-    // Deduplicate by category if single-value slot, or by normalized fact text
     var normFact = normText(entry.fact);
     memoryState.facts = memoryState.facts.filter(function (item) {
-      if (cat in { area: 1, crop: 1, pain: 1 } && item.category === cat) return false;
+      if (SINGLE_VALUE_CATEGORIES[cat] && item.category === cat) return false;
       return normText(item.fact) !== normFact;
     });
+
+    var cap = MULTI_VALUE_CAP_BY_CATEGORY[cat];
+    if (cap) {
+      var sameCat = memoryState.facts.filter(function (item) { return item.category === cat; });
+      while (sameCat.length >= cap) {
+        var oldest = sameCat.shift();
+        memoryState.facts = memoryState.facts.filter(function (item) { return item !== oldest; });
+      }
+    }
+
     memoryState.facts.push(entry);
     if (memoryState.facts.length > MAX_FACTS) {
       memoryState.facts = memoryState.facts.slice(-MAX_FACTS);
     }
-    saveToStorage();
+    if (!skipSave) {
+      saveToStorage();
+    }
     return entry;
   }
 
+  function remember(factText, category, origin) {
+    return insertFact(factText, category, origin, false);
+  }
+
+  function isFillerNoise(norm) {
+    return !norm || norm.length < 4 || /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|ok|certo|sim|nao|hum|uhum|aha|obrigado|obrigada|valeu)$/.test(norm);
+  }
+
   function extractFactsFromTurn(userText, slots) {
-    var norm = normText(userText);
-    if (!norm || norm.length < 3) return [];
+    var raw = String(userText || '').trim();
+    var norm = normText(raw);
+    if (isFillerNoise(norm)) return [];
     var added = [];
 
     if (slots && slots.area != null) {
-      added.push(remember('Área da lavoura: ' + (Math.round(slots.area * 100) / 100) + ' ha', 'area', 'stated'));
+      added.push(insertFact('Área da lavoura: ' + (Math.round(slots.area * 100) / 100) + ' ha', 'area', 'stated', true));
     }
     if (slots && slots.crop) {
-      added.push(remember('Cultura principal: ' + slots.crop, 'crop', 'stated'));
+      added.push(insertFact('Cultura principal: ' + slots.crop, 'crop', 'stated', true));
     }
     if (slots && slots.pain) {
-      added.push(remember('Dificuldade principal: ' + slots.pain, 'pain', 'stated'));
+      added.push(insertFact('Dificuldade principal: ' + slots.pain, 'pain', 'stated', true));
+    }
+
+    // Smallholder goals, dreams and growth targets
+    if (/\b(quero|queria|meu sonho|objetivo|meta|preciso|aumentar a renda|viver da roca|melhorar a colheita|crescer|diversificar|vender mais|sustentar|alimentar a familia)\b/.test(norm)) {
+      added.push(insertFact('Objetivo do produtor: ' + raw.slice(0, 120), 'goal', 'stated', true));
+    }
+
+    // Available resources, strengths and farm assets to leverage
+    if (/\b(cisterna|poco|acude|rio|nascente|esterco|galinha|gado|porco|composto|semente crioula|energia solar|bomba|irrigacao|gotejamento|reserva|terra descansada)\b/.test(norm)) {
+      added.push(insertFact('Recurso/força disponível: ' + raw.slice(0, 120), 'resources', 'stated', true));
+    }
+
+    // Family context & community support
+    if (/\b(familia|esposa|marido|esposo|filho|filhos|pai|mae|irmao|sozinho|sozinha|mutirao|associacao|cooperativa|sindicato|comunidade)\b/.test(norm)) {
+      added.push(insertFact('Contexto familiar/rede: ' + raw.slice(0, 120), 'family_context', 'stated', true));
+    }
+
+    // Practical or financial constraints
+    if (/\b(sem dinheiro|pouco dinheiro|apertado|sem credito|sem financiamento|sem agua|sem bomba|sem transporte|estrada ruim|falta gente|mao de obra|nao tenho condicoes|sem recurso)\b/.test(norm)) {
+      added.push(insertFact('Limitação prática: ' + raw.slice(0, 120), 'constraints', 'stated', true));
+    }
+
+    // Market & sales channels
+    if (/\b(feira|pnae|paa|merenda|atravessador|mercadinho|supermercado|vender na cidade|vizinho|consumo proprio|subsistencia|entrega)\b/.test(norm)) {
+      added.push(insertFact('Canal de venda/destino: ' + raw.slice(0, 120), 'market_channel', 'stated', true));
+    }
+
+    // Traditional knowledge & hands-on experience
+    if (/\b(lua|consorcio|semente antiga|do meu pai|do meu avo|dos antigos|adubo caseiro|calda|cobertura morta|folha seca|experiencia propria)\b/.test(norm)) {
+      added.push(insertFact('Saber/prática tradicional: ' + raw.slice(0, 120), 'traditions', 'stated', true));
+    }
+
+    // Communication register detection (technical vs practical/traditional)
+    if (root.SOLPrompts && typeof root.SOLPrompts.detectTechnicalRegister === 'function' && root.SOLPrompts.detectTechnicalRegister(raw)) {
+      added.push(insertFact('Perfil técnico-científico: usa indicadores orbitais/agronômicos', 'knowledge_level', 'inferred', true));
     }
 
     // Extract planting season / timing facts
     if (/\b(plantar\s+em|planto\s+em|epoca|outubro|novembro|dezembro|janeiro|fevereiro|marco|abril|maio|inverno|verao|chuvas)\b/.test(norm)) {
-      added.push(remember('Época/janela mencionada: ' + userText.trim().slice(0, 100), 'planting_season', 'stated'));
+      added.push(insertFact('Época/janela mencionada: ' + raw.slice(0, 100), 'planting_season', 'stated', true));
     }
     // Extract equipment / irrigation / management tools
-    if (/\b(trator|irrigacao|gotejamento|cisterna|bomba|adubo|calcario|arado|rocadeira|enxada|palhada)\b/.test(norm)) {
-      added.push(remember('Manejo/ferramenta: ' + userText.trim().slice(0, 100), 'tools', 'stated'));
+    if (/\b(trator|arado|rocadeira|enxada|palhada|calcario|adubo|plantio direto|curva de nivel)\b/.test(norm)) {
+      added.push(insertFact('Manejo/ferramenta: ' + raw.slice(0, 100), 'tools', 'stated', true));
     }
     // Extract past crop losses or past errors
     if (/\b(perdi|ano\s+passado|safra\s+passada|queimou|morreu|secou\s+tudo|deu\s+praga)\b/.test(norm)) {
-      added.push(remember('Histórico de safra: ' + userText.trim().slice(0, 100), 'past_issue', 'stated'));
+      added.push(insertFact('Histórico de safra: ' + raw.slice(0, 100), 'past_issue', 'stated', true));
     }
 
-    return added.filter(Boolean);
+    var filtered = added.filter(Boolean);
+    if (filtered.length > 0) {
+      saveToStorage();
+    }
+    return filtered;
   }
 
   function recordTurn(role, text) {
     var cleaned = String(text || '').trim();
-    if (!cleaned) return;
+    if (!cleaned || cleaned.length < 2) return;
     memoryState.recentTurns.push({
       role: role === 'assistant' ? 'assistant' : 'user',
       content: cleaned.slice(0, 420)
@@ -268,6 +339,25 @@
     saveToStorage();
   }
 
+  function groupFactsByCategory(categories) {
+    var catSet = {};
+    categories.forEach(function (c) { catSet[c] = 1; });
+    return memoryState.facts
+      .filter(function (f) { return !!catSet[f.category]; })
+      .map(function (f) { return f.fact; });
+  }
+
+  function buildFarmerProfileSummary() {
+    var isTechnical = memoryState.facts.some(function (f) { return f.category === 'knowledge_level'; });
+    return {
+      goals: groupFactsByCategory(['goal']),
+      resources_and_strengths: groupFactsByCategory(['resources', 'tools', 'traditions']),
+      family_and_market: groupFactsByCategory(['family_context', 'market_channel']),
+      constraints_and_history: groupFactsByCategory(['constraints', 'past_issue', 'planting_season']),
+      communication_register: isTechnical ? 'technical' : 'practical_accessible'
+    };
+  }
+
   function getProfile() {
     var slots = (typeof root.A === 'object' && root.A) ? {
       area_ha: root.A.area,
@@ -276,6 +366,7 @@
     } : {};
     return {
       slots: slots,
+      farmer_profile_summary: buildFarmerProfileSummary(),
       facts: memoryState.facts.slice(),
       research_notes: memoryState.researchNotes.slice(),
       saved_context: memoryState.contextSnapshot,
@@ -329,7 +420,8 @@
       crop: A.crop,
       pain: A.pain,
       rounded_location: roundCoords(L),
-      profile_facts: memoryState.facts.slice(-8),
+      farmer_profile_summary: buildFarmerProfileSummary(),
+      profile_facts: memoryState.facts.slice(-14),
       research_notes: memoryState.researchNotes.slice(-4),
       saved_context: memoryState.contextSnapshot,
       plan: planSummary
@@ -338,6 +430,7 @@
 
   function buildBudgetedPromptContext() {
     var ctx = buildStateContext();
+    var fp = ctx.farmer_profile_summary || {};
     var lines = [
       'ESTADO ATUAL DO PRODUTOR:',
       '- Área: ' + (ctx.area != null ? ctx.area_spoken + ' (' + Math.round(ctx.area * 1000) / 1000 + ' ha)' : 'não informada'),
@@ -345,6 +438,24 @@
       '- Dificuldade principal: ' + (ctx.pain || 'não informada'),
       '- Coordenada aproximada (LGPD grade 0.1°): ' + (ctx.rounded_location ? ctx.rounded_location.lat + ', ' + ctx.rounded_location.lon : 'Nordeste')
     ];
+
+    lines.push('PERFIL HUMANO E PRODUTIVO DO PEQUENO AGRICULTOR (ADAPTE E APROVEITE O QUE ELE JÁ TEM):');
+    lines.push('- Registro de comunicação: ' + (fp.communication_register === 'technical'
+      ? 'Técnico/orbital — pode usar métricas científicas explicando implicações práticas'
+      : 'Prático/popular — linguagem simples, calorosa, sem jargões nem infantilização, valorizando saberes locais'));
+    if (fp.goals && fp.goals.length) {
+      lines.push('- Metas e objetivos: ' + fp.goals.join(' | '));
+    }
+    if (fp.resources_and_strengths && fp.resources_and_strengths.length) {
+      lines.push('- Forças, recursos e saberes já disponíveis: ' + fp.resources_and_strengths.join(' | '));
+    }
+    if (fp.family_and_market && fp.family_and_market.length) {
+      lines.push('- Realidade familiar e mercado: ' + fp.family_and_market.join(' | '));
+    }
+    if (fp.constraints_and_history && fp.constraints_and_history.length) {
+      lines.push('- Limitações práticas e histórico: ' + fp.constraints_and_history.join(' | '));
+    }
+
     if (ctx.profile_facts.length) {
       lines.push('FATOS MEMORIZADOS:');
       ctx.profile_facts.forEach(function (f) {

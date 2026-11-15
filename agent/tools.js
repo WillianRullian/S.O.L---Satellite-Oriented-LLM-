@@ -107,13 +107,17 @@
       type: 'function',
       function: {
         name: 'remember',
-        description: 'Salva um fato agronômico relevante do produtor na memória seletiva local.',
+        description: 'Salva um fato relevante do produtor na memória seletiva local (objetivos, recursos já disponíveis, contexto familiar, limitações, canal de venda, saberes tradicionais ou manejo).',
         parameters: {
           type: 'object',
           properties: {
             fato: {
               type: 'string',
-              description: 'Fato agronômico conciso a memorizar (ex.: "Planta milho em novembro", "Não possui irrigação").'
+              description: 'Fato conciso a memorizar (ex.: "Tem cisterna e esterco de galinha", "Quer vender hortaliças na feira", "Trabalha com esposa e dois filhos").'
+            },
+            category: {
+              type: 'string',
+              description: 'Categoria opcional: goal, resources, family_context, constraints, market_channel, traditions, tools, past_issue, planting_season ou agronomic_fact.'
             }
           },
           required: ['fato']
