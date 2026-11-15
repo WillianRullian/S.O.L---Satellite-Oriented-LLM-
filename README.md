@@ -191,34 +191,80 @@ saida:    texto falado (diagnostico + recomendacao + producao estimada)
 ### 6.4 Clonar e executar
 
 ```bash
-# 1. Clonar o repositorio (substitua pela URL real)
+# 1. Clonar o repositorio
 git clone https://github.com/WillianRullian/S.O.L---Satellite-Oriented-LLM-.git
-cd sol
+cd S.O.L---Satellite-Oriented-LLM-
 
-# 2. Servir os arquivos localmente (opcao A: Python)
-python3 -m http.server 8080
+# 2. Configurar variaveis de ambiente (copie .env.example para .env.local)
+cp .env.example .env.local
 
-# opcao B: Node.js
-npx serve .
+# 3. Executar com o Backend FastAPI do Agente (recomendado)
+pip install -r requirements.txt
+uvicorn server.app:app --reload --port 8000
 
-# 3. Abrir no navegador
-# http://localhost:8080
+# Alternativa offline / servidor estático Node.js
+npm start
+
+# 4. Executar os testes automatizados (Node + Python)
+npm test
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-Passos de uso:
+### 6.5 Agente Autônomo S.O.L. e Seleção de Modelos
 
-1. Abra a página no Chrome, Edge ou Safari.
-2. Toque no botão de microfone para iniciar. A primeira interação do usuário é exigida pelos navegadores para liberar a fala.
-3. Conceda as permissões de microfone e de localização.
-4. Responda por voz às perguntas sobre área, cultura e dificuldade principal.
-5. Peça "mostrar gráficos" para visualizar a comparação das estratégias.
+O S.O.L. conta com um agente autônomo baseado em *function calling* (`agent/` no cliente e `server/` em FastAPI) que atua como cérebro conversacional sobre o motor determinístico existente, preservando 100% da interface visual e da camada de voz (`say`, `seq`, `listen`, `again`, `mode`, `msg`) e mantendo o motor por regras como fallback automático offline.
 
-### 6.5 Estrutura sugerida do repositório
+#### Ferramentas do Agente (`agent/tools.js`)
+- `set_field(area_ha, crop, main_difficulty)`: preenche um ou múltiplos dados da lavoura na mesma fala reutilizando `parseArea()` e `fill()`.
+- `change_area(texto)`: altera a área em qualquer momento da conversa e recalcula as previsões imediatamente.
+- `run_analysis()`: executa `pipe()` e `build()` e retorna em JSON os indicadores orbitais da NASA, as 3 estratégias de manejo e as estimativas de produção.
+- `show_charts()` / `hide_charts()`: exibe ou oculta os gráficos comparativos chamando `viz(true)` e `viz(false)`.
+- `switch_strategy(index)`: alterna entre as 3 estratégias de manejo e atualiza os gráficos se visíveis.
+- `get_profile()` / `remember(fato)`: consulta e persiste fatos agronômicos relevantes na memória seletiva cifrada (`AES-GCM` no `localStorage`), enviando apenas coordenadas arredondadas (`0.1°`) ao modelo (LGPD).
+- `ask_user(slot)`: identifica qual informação ainda falta coletar do produtor.
+
+#### Guardrails Agronômicos (`server/guardrails.py` e `agent/prompts.js`)
+- **Ancoragem Numérica Estrita (Zero Alucinação):** Todo número falado pelo agente é verificado contra os números retornados pelas ferramentas (`run_analysis`, `set_field`, `change_area`, `switch_strategy`). Frases com números não ancorados são bloqueadas antes de chegarem ao `seq()`.
+- **Proibição de Agrotóxicos:** O agente nunca prescreve receitas nem dosagens de defensivos químicos, encaminhando sempre para o técnico agrícola e o receituário agronômico.
+- **Anti-Injeção de Prompt:** Tentativas de alterar as instruções de sistema pela fala do usuário são detectadas e ignoradas.
+
+#### Como Trocar de Modelo (`models.json`)
+A seleção de modelo não altera a UI e pode ser feita de três formas (por ordem de prioridade):
+
+1. **Parâmetro de URL (`?model=`):**
+   - `http://localhost:8000/?model=gemini-flash` (Google Gemini 2.5 Flash)
+   - `http://localhost:8000/?model=gemini-pro` (Google Gemini 2.5 Pro)
+   - `http://localhost:8000/?model=openai-mini` (OpenAI GPT-4o-mini)
+   - `http://localhost:8000/?model=openai-flagship` (OpenAI GPT-4o)
+   - `http://localhost:8000/?model=ollama-local` (Modelo local via Ollama `llama3.1:8b`)
+2. **Variável de Ambiente (`.env` / `.env.local`):**
+   - Defina `SOL_MODEL=gemini-pro` (ou qualquer `id` presente em `models.json`).
+3. **Política Automática do Roteador (`SOL_MODEL=auto`, padrão):**
+   - Falas curtas, coleta simples de slots e comandos visuais são roteados para o modelo local (`ollama-local`) ou rápido/leve (`gemini-flash` / `openai-mini`).
+   - Diagnósticos agronômicos completos, perguntas fora do roteiro (*"e se não chover?"*, *"posso plantar mais cedo?"*) e conversas em registro técnico (`NDVI`, `SMAP`, `evapotranspiração`) são roteados para os modelos de raciocínio (`gemini-pro` / `openai-flagship`), com cadeia automática de fallback entre provedores e queda silenciosa para o motor por regras caso não haja rede ou chaves configuradas.
+
+### 6.6 Estrutura do repositório
 
 ```
 sol/
-|-- index.html        # prototipo (interface, dialogo por voz, motor de decisao simulado)
-|-- README.md
+|-- index.html                 # Interface Voice-First, diálogo por voz e motor determinístico
+|-- models.json                # Registro declarativo de modelos e política de roteamento
+|-- .env.example               # Exemplo de configuração de variáveis de ambiente
+|-- requirements.txt           # Dependências do backend Python (FastAPI)
+|-- agent/
+|   |-- prompts.js             # Prompt de sistema, sanitização de fala e guardrail numérico
+|   |-- memory.js              # Memória seletiva pós-turno e persistência local cifrada (LGPD)
+|   |-- tools.js               # Wrappers de ferramentas sobre parseArea, fill, pipe, build e viz
+|   `-- loop.js                # Laço do agente no cliente (máx. 4 iterações) e fallback offline
+|-- server/
+|   |-- app.py                 # Servidor FastAPI (/api/agent/chat com streaming SSE, /api/models, /api/tts)
+|   |-- config.py              # Carregamento seguro de variáveis de ambiente e models.json
+|   |-- router.py              # Roteador multi-modelo com política automática e cadeia de fallback
+|   |-- guardrails.py          # Guardrails anti-injeção, bloqueio de agrotóxicos e validação numérica
+|   `-- providers/             # Adaptadores para Gemini, OpenAI e Ollama (local)
+|-- tests/
+|   |-- test_client_agent.mjs  # Testes automatizados do agente no cliente (9 cenários)
+|   `-- test_agent_scenarios.py# Testes automatizados do roteador e guardrails no backend
 |-- docs/
 |   |-- architecture.md
 |   `-- scalability-plan.md
