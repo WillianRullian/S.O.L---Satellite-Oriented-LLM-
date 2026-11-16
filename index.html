@@ -46,12 +46,18 @@ main{flex:1;display:flex;flex-direction:column;padding:6px 22px;overflow-y:auto;
  0%{transform:scale(calc(var(--z)*.96));box-shadow:0 0 28px 6px color-mix(in srgb,var(--acc) 65%,transparent),0 0 70px 24px color-mix(in srgb,var(--acc) 30%,transparent),0 0 0 0 color-mix(in srgb,var(--acc) 55%,transparent)}
  100%{transform:scale(calc(var(--z)*.96));box-shadow:0 0 28px 6px color-mix(in srgb,var(--acc) 65%,transparent),0 0 70px 24px color-mix(in srgb,var(--acc) 30%,transparent),0 0 0 90px transparent}}
 
-/* ===== rodapé: legenda + único botão ===== */
+/* ===== rodapé: legenda + controles de voz ===== */
 .foot{display:flex;flex-direction:column;align-items:center;gap:10px;padding:8px 22px 24px}
 .hint{text-align:center;font-size:15px;color:var(--mut);min-height:44px;line-height:1.4;max-width:320px}
+.controls{display:flex;align-items:center;justify-content:center;gap:16px}
 .mic{width:84px;height:84px;border-radius:50%;border:0;background:var(--acc);color:var(--on);display:grid;place-items:center;cursor:pointer}
 .mic.on{animation:mp 1.1s infinite}
 @keyframes mp{50%{transform:scale(1.08)}}
+.stop-btn{width:56px;height:56px;border-radius:50%;border:1.5px solid var(--acc);background:var(--s2);color:var(--acc);display:grid;place-items:center;cursor:pointer;transition:transform .15s,background .2s,color .2s;animation:in .2s ease}
+.stop-btn[hidden]{display:none}
+.stop-btn:hover{background:var(--acc);color:var(--on)}
+.stop-btn:active{transform:scale(.94)}
+.stop-btn svg.ic{width:22px;height:22px;fill:currentColor;stroke:none}
 
 /* ===== gráficos sob demanda ===== */
 #viz{padding-bottom:10px;animation:in .35s ease}
@@ -96,7 +102,10 @@ main{flex:1;display:flex;flex-direction:column;padding:6px 22px;overflow-y:auto;
 </main>
 <div class="foot">
  <div class="hint" id="hint">Toque no microfone para falar com a S.O.L.</div>
- <button class="mic" id="mic" onclick="micTap()" aria-label="Falar com a S.O.L."><svg class="ic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+ <div class="controls">
+  <button class="mic" id="mic" onclick="micTap()" aria-label="Falar com a S.O.L."><svg class="ic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+  <button class="stop-btn" id="stopBtn" type="button" hidden onclick="stopSol()" aria-label="Parar resposta da S.O.L." title="Parar fala"><svg class="ic" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg></button>
+ </div>
 </div>
 <div class="drawer-bg" id="betaModal" hidden onclick="if(event.target===this)closeBeta()">
  <div class="drawer" role="dialog" aria-label="Configuração de Voz e Apresentação">
@@ -164,7 +173,8 @@ var ss=window.speechSynthesis;
 function $(i){return document.getElementById(i)}
 function norm(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
 function msg(t){$('hint').textContent=t}
-function mode(m){$('orb').dataset.m=m;$('mic').classList.toggle('on',m=='listen')}
+function mode(m){$('orb').dataset.m=m;$('mic').classList.toggle('on',m=='listen');var sb=$('stopBtn');if(sb)sb.hidden=(m!=='talk')}
+function stopSol(){tk++;stopAudio();if(typeof speechCommitTimer!=='undefined'&&speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}window.__solUserSpeaking=false;mode('idle');msg('Fala interrompida. Toque no microfone para falar.')}
 function K(x,h){return Math.max(5,Math.min(h||100,Math.round(x)))}
 function lvl(x){return x<35?'baixo':x<60?'médio':'alto'}
 
@@ -181,6 +191,7 @@ var voices=[],curAudio=null,audioCache=new Map(),hasServer=false;
    hasServer=true;
    if(!localStorage.getItem(VC_KEY)||VC.engine==='browser')VC.engine='eleven_server';
    var btn=$('betaBtn');if(btn)btn.innerHTML='<span class="beta-dot"></span>ElevenLabs v4';
+   if(window.SOLPitch&&typeof window.SOLPitch.warmupPitchAudio==='function'){window.SOLPitch.warmupPitchAudio()}
   }
  }).catch(function(){})})();
 
@@ -293,11 +304,21 @@ async function speakNeural(t,my,cb,ctx){
  }catch(e){speakBrowser(t,my,cb)}}
 
 /* ================= voz: falar ================= */
+function prefetchTts(t,prev,next){
+ if(!t||VC.engine!=='eleven_server'||typeof fetch!=='function'||typeof location!=='undefined'&&location.protocol==='file:')return;
+ var vid=VC.srvVoice||'cgSgspJ2msm6clMCkdW9',key=VC.engine+':'+vid+':'+t;
+ if(audioCache.has(key))return;
+ fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({text:t,voiceId:vid,previousText:prev||'',nextText:next||''})})
+ .then(function(r){return r.ok?r.blob():null})
+ .then(function(b){if(b&&typeof URL!=='undefined'&&URL.createObjectURL){audioCache.set(key,URL.createObjectURL(b))}})
+ .catch(function(){})}
 function say(t,cb,ctx){var my=++tk;if(rec){try{rec.abort()}catch(e){}}
  stopAudio();
  if(VC.engine==='eleven_server'||VC.engine==='openai'||VC.engine==='eleven')return speakNeural(t,my,cb,ctx);
  speakBrowser(t,my,cb)}
 function seq(a,cb,idx){var i=idx||0;if(i>=a.length){if(cb)cb();return}
+ if(i+1<a.length){prefetchTts(a[i+1],a[i],i+2<a.length?a[i+2]:'')}
  say(a[i],function(){seq(a,cb,i+1)},{prev:i>0?a[i-1]:'',next:i+1<a.length?a[i+1]:''})}
 function again(){listen()}
 
@@ -320,15 +341,57 @@ function runPitchDemo(){
    msg('Apresentação concluída · toque no microfone para testar ao vivo')})})}
 
 /* ================= voz: ouvir ================= */
+var speechCommitTimer=null;
 function listen(){var R=window.SpeechRecognition||window.webkitSpeechRecognition;
  if(!R){msg('Este navegador não ouve voz. Use Chrome, Edge ou Safari.');return}
- tk++;stopAudio();if(rec){try{rec.abort()}catch(e){}}
- var r=rec=new R();r.lang='pt-BR';r.interimResults=true;mode('listen');msg('Ouvindo… pode falar');
- r.onresult=function(e){var x=e.results[e.results.length-1],t=x[0].transcript;if(!x.isFinal){msg('“'+t+'”');return}if(rec==r){nsp=0;handle(norm(t),t)}};
+ tk++;stopAudio();
+ if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}
+ window.__solUserSpeaking=false;
+ if(rec){try{rec.abort()}catch(e){}}
+ var r=rec=new R();r.lang='pt-BR';r.interimResults=true;r.continuous=true;
+ var PAUSE_MS=1200,lastFull='',flushed=false;
+ mode('listen');msg('Ouvindo… pode falar');
+ function collectSpeech(resList){
+  var finals=[],interims=[];
+  for(var i=0;i<resList.length;i++){
+   var item=resList[i],txt=(item&&item[0]&&item[0].transcript||'').trim();
+   if(!txt)continue;
+   if(item.isFinal)finals.push(txt);else interims.push(txt);
+  }
+  return {finalText:finals.join(' ').trim(),interimText:interims.join(' ').trim()};
+ }
+ function flushSpeech(){
+  if(flushed||rec!==r)return;
+  if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}
+  var clean=lastFull.trim();
+  window.__solUserSpeaking=false;
+  if(!clean){if($('orb').dataset.m=='listen')mode('idle');return}
+  flushed=true;nsp=0;
+  try{r.stop()}catch(e){}
+  handle(norm(clean),clean);
+ }
+ r.onspeechstart=function(){if(rec!=r)return;window.__solUserSpeaking=true;window.__solLastSpeechAt=Date.now();if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}};
+ r.onsoundstart=function(){if(rec!=r)return;window.__solUserSpeaking=true;window.__solLastSpeechAt=Date.now();if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}};
+ r.onresult=function(e){if(rec!=r||flushed)return;
+  if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}
+  var parsed=collectSpeech(e.results);
+  lastFull=[parsed.finalText,parsed.interimText].filter(Boolean).join(' ').trim();
+  window.__solLastSpeechAt=Date.now();
+  window.__solUserSpeaking=Boolean(parsed.interimText)||!parsed.finalText;
+  if(lastFull)msg('“'+lastFull+'”');
+  if(!parsed.interimText&&parsed.finalText){
+   speechCommitTimer=setTimeout(flushSpeech,PAUSE_MS);
+  }
+ };
+ r.onspeechend=function(){if(rec!=r||flushed)return;window.__solLastSpeechAt=Date.now();
+  if(lastFull&&!speechCommitTimer){window.__solUserSpeaking=false;speechCommitTimer=setTimeout(flushSpeech,PAUSE_MS)}
+ };
  r.onerror=function(e){if(rec!=r)return;
+  if(speechCommitTimer){clearTimeout(speechCommitTimer);speechCommitTimer=null}
+  window.__solUserSpeaking=false;
   if(e.error=='not-allowed'||e.error=='service-not-allowed'){msg('Microfone bloqueado. Libere o microfone no navegador.');mode('idle');rec=null}
-  else if(e.error=='no-speech'){if(++nsp<3)setTimeout(function(){if(rec==r)listen()},300);else{msg('Toque no microfone para falar.');mode('idle')}}};
- r.onend=function(){if(rec==r&&$('orb').dataset.m=='listen')mode('idle')};
+  else if(e.error=='no-speech'){if(lastFull){flushSpeech()}else if(++nsp<3)setTimeout(function(){if(rec==r)listen()},300);else{msg('Toque no microfone para falar.');mode('idle')}}};
+ r.onend=function(){if(rec==r){window.__solUserSpeaking=false;if(lastFull&&!flushed){flushSpeech()}else if($('orb').dataset.m=='listen'){mode('idle')}}};
  try{r.start()}catch(e){}}
 function micTap(){if(!started)start();else listen()}
 
@@ -460,6 +523,7 @@ function renderViz(){var P=plan,B=P.S[sel],mx=Math.max.apply(0,P.S.map(function(
 <script src="agent/prompts.js"></script>
 <script src="agent/memory.js"></script>
 <script src="agent/tools.js"></script>
+<script src="agent/pitch.js"></script>
 <script src="agent/loop.js"></script>
 </body>
 </html>

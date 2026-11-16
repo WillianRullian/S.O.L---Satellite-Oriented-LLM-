@@ -117,7 +117,7 @@ class GeminiProvider(BaseLLMProvider):
         )
         gen_cfg: Dict[str, Any] = {
             "temperature": temperature,
-            "maxOutputTokens": 450,
+            "maxOutputTokens": 260,
         }
         if "lite" not in actual_model:
             gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}

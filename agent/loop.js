@@ -3,6 +3,46 @@
 
   var MAX_ITERATIONS = 4;
   var customTransport = null;
+  var latestTurnSeq = 0;
+
+  function isUserCurrentlySpeaking() {
+    if (root.__solUserSpeaking === true) return true;
+    if (typeof root.document !== 'undefined' && root.document && typeof root.document.getElementById === 'function') {
+      var orb = root.document.getElementById('orb');
+      if (orb && orb.dataset && orb.dataset.m === 'listen' && root.__solLastSpeechAt) {
+        if (Date.now() - root.__solLastSpeechAt < 1800) return true;
+      }
+    }
+    return false;
+  }
+
+  function waitWhileUserSpeaking(turnSeq) {
+    if (!isUserCurrentlySpeaking() || typeof setTimeout !== 'function') {
+      return Promise.resolve(turnSeq === latestTurnSeq);
+    }
+    var syncFired = false;
+    var probeId = setTimeout(function () { syncFired = true; }, 1);
+    if (typeof clearTimeout === 'function') clearTimeout(probeId);
+    // Avoid blocking synchronous VM test harnesses
+    if (syncFired) return Promise.resolve(turnSeq === latestTurnSeq);
+
+    return new Promise(function (resolve) {
+      var waited = 0;
+      function tick() {
+        if (turnSeq !== latestTurnSeq) {
+          resolve(false);
+          return;
+        }
+        if (!isUserCurrentlySpeaking() || waited >= 15000) {
+          resolve(turnSeq === latestTurnSeq);
+          return;
+        }
+        waited += 150;
+        setTimeout(tick, 150);
+      }
+      setTimeout(tick, 150);
+    });
+  }
 
   function inferImplicitToolCalls(t, userUtterance) {
     var norm = String(t || '').toLowerCase();
@@ -230,95 +270,6 @@
     return 'Consultando sistemas internos…';
   }
 
-  var VOICE_FILLER_POOLS = {
-    thinking: [
-      'Só um instante, já respondo.',
-      'Deixa eu pensar com calma aqui.',
-      'Já estou vendo isso pra você.',
-      'Espera só um segundinho.',
-      'Estou analisando o que você me disse.',
-      'Tô conferindo tudo certinho.'
-    ],
-    satellite: [
-      'Estou olhando os satélites agora.',
-      'Deixa eu checar a umidade e o clima.',
-      'Consultando os dados de satélite da sua terra.',
-      'Verificando as imagens e o tempo na região.',
-      'Buscando os sinais do satélite pra você.'
-    ],
-    system: [
-      'Consultando nosso sistema aqui.',
-      'Buscando as informações da sua lavoura.',
-      'Cruzando os dados nos sistemas internos.',
-      'Conferindo o plano da sua área.',
-      'Organizando os detalhes da recomendação.'
-    ],
-    analyzing: [
-      'Só mais um momento, já tô quase pronta.',
-      'Terminando de analisar esses dados.',
-      'Fechando o melhor caminho pra você.',
-      'Quase tudo pronto por aqui.'
-    ]
-  };
-  var VOICE_INITIAL_DELAY_MS = 450;
-  var VOICE_BETWEEN_GAP_MS = 1600;
-  var MAX_FILLER_TRANSITION_WAIT_MS = 2200;
-  var MAX_FILLERS_PER_TURN = 3;
-  var recentVoiceFillers = [];
-  var voiceRotationCursor = 0;
-
-  function pickNextVoiceFiller(category, usedThisTurn) {
-    var pool = VOICE_FILLER_POOLS[category] || VOICE_FILLER_POOLS.thinking;
-    var candidates = pool.filter(function (phrase) {
-      return !usedThisTurn[phrase] && recentVoiceFillers.indexOf(phrase) === -1;
-    });
-    if (!candidates.length) {
-      var fallbackPools = [].concat(
-        VOICE_FILLER_POOLS.thinking,
-        VOICE_FILLER_POOLS.system,
-        VOICE_FILLER_POOLS.satellite,
-        VOICE_FILLER_POOLS.analyzing
-      );
-      candidates = fallbackPools.filter(function (phrase) {
-        return !usedThisTurn[phrase] && recentVoiceFillers.indexOf(phrase) === -1;
-      });
-    }
-    if (!candidates.length) {
-      candidates = pool.filter(function (phrase) {
-        return !usedThisTurn[phrase] && phrase !== recentVoiceFillers[recentVoiceFillers.length - 1];
-      });
-    }
-    if (!candidates.length) {
-      candidates = pool;
-    }
-
-    var chosen = candidates[voiceRotationCursor % candidates.length];
-    voiceRotationCursor += 1;
-    usedThisTurn[chosen] = true;
-    recentVoiceFillers.push(chosen);
-    if (recentVoiceFillers.length > 12) {
-      recentVoiceFillers.shift();
-    }
-    return chosen;
-  }
-
-  function getVoiceCategoryForTool(toolName, args) {
-    var safeArgs = args || {};
-    if (toolName === 'run_analysis') return 'satellite';
-    if (toolName === 'research_agronomic_mock') {
-      var topic = String(safeArgs.topic || safeArgs.query || '').toLowerCase();
-      var category = String(safeArgs.category || '').toLowerCase();
-      if (category === 'satellite_soil' || category === 'climate_zarc' || /sat[eé]lit|ndvi|smap|chuva|clima|zarc|umidade/.test(topic)) {
-        return 'satellite';
-      }
-      return 'system';
-    }
-    if (toolName === 'set_field' || toolName === 'change_area' || toolName === 'get_profile' || toolName === 'remember') {
-      return 'system';
-    }
-    return 'analyzing';
-  }
-
   function createProcessingFeedback(userUtterance) {
     ensureAccessibilityAttrs();
     setAriaBusy(true);
@@ -333,23 +284,10 @@
     ];
     var stageIdx = 1;
     var timerId = null;
-    var voiceTimerId = null;
     var stopped = false;
-    var finishRequested = false;
-    var isSpeakingFiller = false;
-    var fillersSpokenThisTurn = 0;
-    var usedVoicePhrasesThisTurn = {};
-    var fillerDoneWaiters = [];
-
-    var q = String(userUtterance || '').toLowerCase();
-    var wantsSat = /sat[eé]lit|ndvi|smap|chuva|umidade/.test(q);
-    var currentVoiceCategory = wantsSat ? 'satellite' : 'thinking';
-    var initialMsg = wantsSat ? 'Consultando satélites…' : 'Sol pensando…';
-    var lastVisualStatus = initialMsg;
 
     function emitStatus(text) {
       if (stopped || !text) return;
-      lastVisualStatus = text;
       if (typeof root.msg === 'function') {
         root.msg(text);
       } else if (typeof root.document !== 'undefined' && root.document && typeof root.document.getElementById === 'function') {
@@ -358,11 +296,15 @@
       }
     }
 
+    var q = String(userUtterance || '').toLowerCase();
+    var initialMsg = /sat[eé]lit|ndvi|smap|chuva|umidade/.test(q)
+      ? 'Consultando satélites…'
+      : 'Sol pensando…';
     emitStatus(initialMsg);
 
     if (typeof setInterval === 'function' && typeof clearInterval === 'function') {
       timerId = setInterval(function () {
-        if (stopped || finishRequested) return;
+        if (stopped) return;
         emitStatus(stages[stageIdx % stages.length]);
         stageIdx += 1;
       }, 900);
@@ -375,133 +317,14 @@
       }
     }
 
-    function clearVoiceTimer() {
-      if (voiceTimerId !== null && typeof clearTimeout === 'function') {
-        clearTimeout(voiceTimerId);
-        voiceTimerId = null;
-      }
-    }
-
-    function flushWaiters() {
-      if (!fillerDoneWaiters.length) return;
-      var waiters = fillerDoneWaiters.slice();
-      fillerDoneWaiters = [];
-      for (var i = 0; i < waiters.length; i++) {
-        waiters[i]();
-      }
-    }
-
-    function scheduleVoiceFiller(delayMs) {
-      if (stopped || finishRequested || isSpeakingFiller || fillersSpokenThisTurn >= MAX_FILLERS_PER_TURN) {
-        return;
-      }
-      if (typeof root.say !== 'function' || typeof setTimeout !== 'function') {
-        return;
-      }
-      clearVoiceTimer();
-      var syncGuard = true;
-      voiceTimerId = setTimeout(function () {
-        voiceTimerId = null;
-        if (syncGuard) return;
-        speakNextVoiceFiller();
-      }, delayMs);
-      syncGuard = false;
-    }
-
-    function speakNextVoiceFiller() {
-      if (stopped || finishRequested || isSpeakingFiller || fillersSpokenThisTurn >= MAX_FILLERS_PER_TURN) {
-        return;
-      }
-      if (typeof root.say !== 'function') return;
-
-      var phrase = pickNextVoiceFiller(currentVoiceCategory, usedVoicePhrasesThisTurn);
-      if (!phrase) return;
-
-      isSpeakingFiller = true;
-      fillersSpokenThisTurn += 1;
-      var finished = false;
-      var safetyTimeoutId = null;
-
-      function onFillerDone() {
-        if (finished) return;
-        finished = true;
-        if (safetyTimeoutId !== null && typeof clearTimeout === 'function') {
-          clearTimeout(safetyTimeoutId);
-          safetyTimeoutId = null;
-        }
-        isSpeakingFiller = false;
-        flushWaiters();
-        if (!stopped && !finishRequested) {
-          emitStatus(lastVisualStatus);
-          setAriaBusy(true);
-          if (currentVoiceCategory === 'thinking') {
-            currentVoiceCategory = 'system';
-          } else if (currentVoiceCategory === 'system') {
-            currentVoiceCategory = 'analyzing';
-          }
-          scheduleVoiceFiller(VOICE_BETWEEN_GAP_MS);
-        }
-      }
-
-      if (typeof setTimeout === 'function') {
-        var syncSafety = true;
-        safetyTimeoutId = setTimeout(function () {
-          if (!syncSafety) onFillerDone();
-        }, 4500);
-        syncSafety = false;
-      }
-
-      try {
-        root.say(phrase, onFillerDone);
-      } catch (e) {
-        onFillerDone();
-      }
-    }
-
-    scheduleVoiceFiller(VOICE_INITIAL_DELAY_MS);
-
     return {
       onToolCall: function (toolName, args) {
-        currentVoiceCategory = getVoiceCategoryForTool(toolName, args);
         emitStatus(getToolStatusMessage(toolName, args));
       },
       onAnalyzing: function () {
-        currentVoiceCategory = 'analyzing';
         emitStatus('Analisando dados encontrados…');
       },
-      waitBeforeSpeech: function () {
-        finishRequested = true;
-        clearVoiceTimer();
-        stopTimer();
-        if (!isSpeakingFiller) {
-          return Promise.resolve();
-        }
-        return new Promise(function (resolve) {
-          var settled = false;
-          var capTimer = null;
-          function done() {
-            if (settled) return;
-            settled = true;
-            if (capTimer !== null && typeof clearTimeout === 'function') {
-              clearTimeout(capTimer);
-              capTimer = null;
-            }
-            fillerDoneWaiters = fillerDoneWaiters.filter(function (fn) { return fn !== done; });
-            resolve();
-          }
-          fillerDoneWaiters.push(done);
-          if (typeof setTimeout === 'function') {
-            var syncCap = true;
-            capTimer = setTimeout(function () {
-              if (!syncCap) done();
-            }, MAX_FILLER_TRANSITION_WAIT_MS);
-            syncCap = false;
-          }
-        });
-      },
       beforeSpeech: function () {
-        finishRequested = true;
-        clearVoiceTimer();
         stopTimer();
         emitStatus('Preparando a voz da Sol…');
         stopped = true;
@@ -509,11 +332,7 @@
       },
       stop: function () {
         stopped = true;
-        finishRequested = true;
-        isSpeakingFiller = false;
-        clearVoiceTimer();
         stopTimer();
-        flushWaiters();
         setAriaBusy(false);
       }
     };
@@ -531,7 +350,26 @@
     }
 
     var userUtterance = String(raw || t || '').trim();
+    var myTurnSeq = ++latestTurnSeq;
     root._lastUserUtterance = userUtterance;
+    if (!userUtterance || (!/\d/.test(userUtterance) && userUtterance.replace(/[^a-zA-Z\u00C0-\u024F]/g, '').length < 2)) {
+      var clarifyChunks = ['Não consegui ouvir direitinho o que você falou. Pode repetir com calma?'];
+      if (typeof root.seq === 'function') {
+        root.seq(clarifyChunks, root.again);
+      }
+      return { mode: 'agent', chunks: clarifyChunks, tool_results: [], guardrail: 'inaudible_input' };
+    }
+    if (
+      memory &&
+      typeof memory.restoreContextToRuntime === 'function' &&
+      root.A && root.A.area == null && !root.A.crop && !root.A.pain &&
+      !/\b(recome|do zero|reinici)\b/.test(String(t || '').toLowerCase())
+    ) {
+      memory.restoreContextToRuntime();
+    }
+    if (memory && typeof memory.extractFactsFromTurn === 'function') {
+      memory.extractFactsFromTurn(userUtterance, root.A);
+    }
     var chosenModel = getSelectedModel();
     var messages = memory ? memory.getRecentTurns() : [];
     messages.push({ role: 'user', content: userUtterance });
@@ -542,7 +380,17 @@
     var feedback = createProcessingFeedback(userUtterance);
 
     try {
-      for (var iter = 0; iter < MAX_ITERATIONS; iter++) {
+      var pitchActive = root.SOLPitch && typeof root.SOLPitch.isPitchModeActive === 'function' && root.SOLPitch.isPitchModeActive();
+      if ((!customTransport || pitchActive) && root.SOLPitch && typeof root.SOLPitch.matchAndExecute === 'function') {
+        var fastPitch = root.SOLPitch.matchAndExecute(t, userUtterance, tools, prompts);
+        if (fastPitch && fastPitch.chunks && fastPitch.chunks.length) {
+          finalChunks = fastPitch.chunks;
+          toolResults = fastPitch.tool_results || [];
+          lastMeta = { selected_model_id: pitchActive ? 'pitch-fast-flow' : 'local-fast-path', tier: 'fast', pitch_scene: fastPitch.pitch_scene };
+        }
+      }
+
+      for (var iter = 0; !finalChunks && iter < MAX_ITERATIONS; iter++) {
         var stateContext = memory ? memory.buildStateContext() : {};
         var promptContext = memory ? memory.buildBudgetedPromptContext() : '';
 
@@ -642,6 +490,10 @@
         }
       }
 
+      if (finalChunks.length > 5) {
+        finalChunks = finalChunks.slice(0, 5);
+      }
+
       if (memory) {
         memory.extractFactsFromTurn(userUtterance, root.A);
         memory.recordTurn('user', userUtterance);
@@ -651,7 +503,17 @@
         }
       }
 
-      await feedback.waitBeforeSpeech();
+      var canSpeak = await waitWhileUserSpeaking(myTurnSeq);
+      if (!canSpeak || myTurnSeq !== latestTurnSeq) {
+        feedback.stop();
+        return {
+          mode: 'superseded',
+          reason: 'user_still_speaking_or_newer_turn',
+          chunks: finalChunks,
+          tool_results: toolResults
+        };
+      }
+
       feedback.beforeSpeech();
       if (typeof root.seq === 'function') {
         root.seq(finalChunks, root.again);
@@ -665,7 +527,7 @@
       };
     } catch (err) {
       feedback.stop();
-      if (typeof fallbackFn === 'function') {
+      if (myTurnSeq === latestTurnSeq && !isUserCurrentlySpeaking() && typeof fallbackFn === 'function') {
         fallbackFn(t, raw);
       }
       return {

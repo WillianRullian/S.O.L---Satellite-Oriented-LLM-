@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 
-function createSOLRuntime(sharedStorage, options = {}) {
+function createSOLRuntime(sharedStorage) {
   const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const inlineScriptMatch = indexHtml.match(/<script>([\s\S]*?)<\/script>/);
   assert.ok(inlineScriptMatch, 'Inline script in index.html must exist');
@@ -29,6 +29,7 @@ function createSOLRuntime(sharedStorage, options = {}) {
         }
       }
     },
+    stopBtn: { hidden: true },
     viz: { hidden: true, innerHTML: '' },
     app: {
       classList: {
@@ -85,10 +86,8 @@ function createSOLRuntime(sharedStorage, options = {}) {
     isFinite,
     encodeURIComponent,
     decodeURIComponent,
-    setTimeout: options.useRealTimers ? globalThis.setTimeout : (fn) => { fn(); return 1; },
-    clearTimeout: options.useRealTimers ? globalThis.clearTimeout : () => {},
-    setInterval: options.useRealTimers ? globalThis.setInterval : undefined,
-    clearInterval: options.useRealTimers ? globalThis.clearInterval : undefined,
+    setTimeout: (fn) => { fn(); return 1; },
+    clearTimeout: () => {},
     btoa: (str) => Buffer.from(str, 'binary').toString('base64'),
     atob: (b64) => Buffer.from(b64, 'base64').toString('binary'),
     location: { protocol: 'http:', search: '' },
@@ -131,7 +130,7 @@ function createSOLRuntime(sharedStorage, options = {}) {
     if (cb) cb();
   };
 
-  for (const file of ['prompts.js', 'memory.js', 'tools.js', 'loop.js']) {
+  for (const file of ['prompts.js', 'memory.js', 'tools.js', 'pitch.js', 'loop.js']) {
     const code = fs.readFileSync(path.join(ROOT, 'agent', file), 'utf8');
     vm.runInContext(code, sandbox);
   }
@@ -528,86 +527,245 @@ test('11. Feedback visual progressivo e acessibilidade ARIA durante o processame
   assert.ok(statusHistory.includes('Preparando a voz da Sol…'), 'Deve avisar preparação de voz antes do áudio');
 });
 
-test('12. Feedback de voz durante pensamento não atropela nem repete frases', async () => {
-  const rt = createSOLRuntime(undefined, { useRealTimers: true });
+test('12. Memória seletiva captura contexto humano e produtivo do pequeno agricultor e restaura entre sessões', async () => {
+  const sharedStorage = new Map();
+  const rt1 = createSOLRuntime(sharedStorage);
 
-  let activeAudioCount = 0;
-  let overlapDetected = false;
-  const fillerPhrases = [];
-  const finalEvents = [];
+  rt1.A = { area: 2, crop: 'Milho', pain: 'seca' };
+  rt1.L = rt1.FB;
+  rt1.plan = rt1.build();
+  rt1.state = 'ready';
 
-  rt.say = function (txt, cb) {
-    if (activeAudioCount > 0) {
-      overlapDetected = true;
-    }
-    activeAudioCount += 1;
-    fillerPhrases.push(String(txt));
-    rt.spokenHistory.push(String(txt));
-    globalThis.setTimeout(() => {
-      activeAudioCount -= 1;
-      if (typeof cb === 'function') cb();
-    }, 120);
-  };
+  const falaProdutor = 'Trabalho com minha esposa e meu filho, temos uma cisterna e esterco de galinha, mas pouco dinheiro pra investir. Quero vender na feira pra aumentar a renda, usando cobertura morta como meu pai fazia.';
+  let capturedPrompt = '';
+  let capturedSummary = null;
 
-  rt.seq = function (arr, cb) {
-    if (activeAudioCount > 0) {
-      overlapDetected = true;
-    }
-    (arr || []).forEach((s) => {
-      finalEvents.push(String(s));
-      rt.spokenHistory.push(String(s));
-    });
-    if (typeof cb === 'function') cb();
-  };
+  rt1.SOLAgent.setTransport(async (payload) => {
+    capturedPrompt = payload.system_prompt;
+    capturedSummary = payload.state_context.farmer_profile_summary;
+    return {
+      ok: true,
+      text: 'Que força bonita você já tem com a família, a cisterna e o esterco de galinha! Dá para fortalecer sua cobertura morta sem gastar muito e mirar a venda na feira.'
+    };
+  });
 
-  // Turn 1: resposta demorada (> 2200ms) com ferramenta de satélite para disparar mais de 1 frase de voz
-  let turn1Calls = 0;
-  rt.SOLAgent.setTransport(async () => {
-    turn1Calls += 1;
-    if (turn1Calls === 1) {
-      await new Promise((r) => globalThis.setTimeout(r, 600));
+  const res1 = await rt1.handle(rt1.norm(falaProdutor), falaProdutor);
+  assert.equal(res1.mode, 'agent');
+
+  // Ruído curto não deve poluir a memória seletiva
+  const noiseAdded = rt1.SOLMemory.extractFactsFromTurn('hum', rt1.A);
+  assert.equal(noiseAdded.length, 0, 'Ruído/hesitação deve ser descartado');
+
+  // Nova sessão simulando recarregamento deve restaurar automaticamente os slots e sintetizar o perfil humano no prompt
+  const rt2 = createSOLRuntime(sharedStorage);
+  rt2.SOLAgent.setTransport(async (payload) => {
+    capturedPrompt = payload.system_prompt;
+    capturedSummary = payload.state_context.farmer_profile_summary;
+    return {
+      ok: true,
+      text: 'Continuando do seu milho, aproveite o esterco e a cisterna para segurar a umidade e planejar a feira.'
+    };
+  });
+
+  const res2 = await rt2.handle(rt2.norm('qual o próximo passo para essa semana?'), 'qual o próximo passo para essa semana?');
+  assert.equal(res2.mode, 'agent');
+  assert.equal(rt2.A.crop, 'Milho');
+  assert.equal(rt2.A.area, 2);
+  assert.ok(capturedSummary.goals.length >= 1, 'Deve extrair meta/objetivo do produtor');
+  assert.ok(capturedSummary.resources_and_strengths.length >= 2, 'Deve extrair recursos disponíveis e saberes tradicionais');
+  assert.ok(capturedSummary.family_and_market.length >= 2, 'Deve extrair contexto familiar e canal de venda');
+  assert.ok(capturedSummary.constraints_and_history.length >= 1, 'Deve extrair limitações práticas');
+  assert.ok(capturedPrompt.includes('PERFIL HUMANO E PRODUTIVO DO USUÁRIO'));
+  assertAllSpokenNumbersGrounded(rt2, res2);
+});
+
+test('13. Sol não presume roça ou fazenda antes de conhecer o usuário e espelha o contexto quando revelado', async () => {
+  const sharedStorage = new Map();
+  const rt = createSOLRuntime(sharedStorage);
+  let promptAntes = '';
+  let promptDepois = '';
+  let summaryDepois = null;
+
+  let step = 0;
+  rt.SOLAgent.setTransport(async (payload) => {
+    step += 1;
+    if (step === 1) {
+      promptAntes = payload.system_prompt;
       return {
         ok: true,
-        tool_calls: [
-          {
-            id: 'c_voice_1',
-            name: 'research_agronomic_mock',
-            arguments: { query: 'umidade SMAP para milho', category: 'satellite_soil' }
-          }
-        ]
+        text: 'Oi! Prazer falar com você. Como é o espaço onde você está plantando hoje?'
       };
     }
-    await new Promise((r) => globalThis.setTimeout(r, 1750));
+    promptDepois = payload.system_prompt;
+    summaryDepois = payload.state_context.farmer_profile_summary;
     return {
       ok: true,
-      text: 'Os satélites indicam umidade regular no solo para o seu milho.'
+      text: 'Que legal cuidar do seu sítio com a sua família! Vamos ver o melhor caminho para a sua área.'
     };
   });
 
-  rt.A = { area: 4, crop: 'Milho', pain: 'seca' };
-  rt.L = rt.FB;
-  rt.state = 'ready';
+  await rt.handle(rt.norm('oi quero melhorar meu plantio'), 'oi quero melhorar meu plantio');
+  assert.ok(promptAntes.includes('NÃO suponha "roça", "fazenda"'), 'Sem contexto inicial, deve orientar a não supor roça nem fazenda');
 
-  const res1 = await rt.handle(rt.norm('como está o satélite hoje?'), 'como está o satélite hoje?');
-  assert.equal(res1.mode, 'agent');
-  assert.ok(fillerPhrases.length >= 2, `Esperava ao menos 2 frases de pensamento, veio ${fillerPhrases.length}`);
+  await rt.handle(rt.norm('eu tenho um sitio pequeno aqui no interior'), 'eu tenho um sitio pequeno aqui no interior');
+  assert.equal(summaryDepois.property_type, 'sitio');
+  assert.ok(promptDepois.includes('Tipo de espaço informado pelo usuário: sitio'), 'Após usuário informar sítio, deve personalizar contexto');
+});
 
-  // Turn 2: novo turno demorado não deve repetir nenhuma frase usada no Turn 1
-  const countBeforeTurn2 = fillerPhrases.length;
+test('14. Escuta contínua não corta agricultor durante pausas e Sol aguarda fim da fala antes de responder', async () => {
+  const rt = createSOLRuntime();
+  rt.setTimeout = globalThis.setTimeout;
+  rt.clearTimeout = globalThis.clearTimeout;
+
+  let activeRecInstance = null;
+  class MockSpeechRecognition {
+    constructor() {
+      this.lang = '';
+      this.interimResults = false;
+      this.continuous = false;
+      activeRecInstance = this;
+    }
+    start() {}
+    stop() {}
+    abort() {}
+  }
+  rt.SpeechRecognition = MockSpeechRecognition;
+
+  const receivedUtterances = [];
+  let seqCalledWhileSpeaking = false;
+
+  rt.SOLAgent.setTransport(async (payload) => {
+    receivedUtterances.push(payload.raw_transcript);
+    return { ok: true, text: 'Entendi direitinho todo o seu relato! Vamos cuidar do solo juntos.' };
+  });
+
+  // Patch handle spy via seq observation while __solUserSpeaking transitions
+  const origSeq = rt.seq;
+  rt.seq = function (arr, cb) {
+    if (rt.__solUserSpeaking === true) {
+      seqCalledWhileSpeaking = true;
+    }
+    return origSeq(arr, cb);
+  };
+
+  rt.listen();
+  assert.ok(activeRecInstance, 'SpeechRecognition deve ser instanciado');
+  assert.equal(activeRecInstance.continuous, true, 'Escuta deve ativar modo contínuo para falas longas');
+
+  // Segmento 1 com pausa curta (< 1900ms) não deve disparar handle ainda
+  activeRecInstance.onspeechstart();
+  activeRecInstance.onresult({
+    results: [{ isFinal: true, 0: { transcript: 'Eu tenho cinco hectares de milho' } }]
+  });
+  await new Promise((r) => globalThis.setTimeout(r, 350));
+  assert.equal(receivedUtterances.length, 0, 'Não deve cortar o produtor durante pausa curta');
+
+  // Segmento 2 enquanto continua falando
+  activeRecInstance.onresult({
+    results: [
+      { isFinal: true, 0: { transcript: 'Eu tenho cinco hectares de milho' } },
+      { isFinal: false, 0: { transcript: 'e também quero cuidar' } }
+    ]
+  });
+  assert.equal(rt.__solUserSpeaking, true);
+  assert.equal(receivedUtterances.length, 0);
+
+  // Finaliza fala e aguarda janela de silêncio completa (> 1900ms)
+  activeRecInstance.onresult({
+    results: [
+      { isFinal: true, 0: { transcript: 'Eu tenho cinco hectares de milho' } },
+      { isFinal: true, 0: { transcript: 'e também quero cuidar melhor do solo' } }
+    ]
+  });
+
+  await new Promise((r) => globalThis.setTimeout(r, 2100));
+  assert.equal(receivedUtterances.length, 1, 'Deve enviar a fala completa somente após silêncio');
+  assert.equal(
+    receivedUtterances[0],
+    'Eu tenho cinco hectares de milho e também quero cuidar melhor do solo'
+  );
+
+  // Agora testa diretamente proteção no agente caso o usuário volte a falar enquanto agente processa
+  rt.__solUserSpeaking = true;
+  const turnPromise = rt.handle(rt.norm('outra dúvida rápida'), 'outra dúvida rápida');
+  await new Promise((r) => globalThis.setTimeout(r, 250));
+  assert.equal(seqCalledWhileSpeaking, false, 'Sol não deve chamar seq() enquanto __solUserSpeaking estiver true');
+  rt.__solUserSpeaking = false;
+  const res = await turnPromise;
+  assert.equal(res.mode, 'agent');
+  assert.equal(seqCalledWhileSpeaking, false);
+});
+
+test('15. Botão de parar aparece apenas durante mode("talk") e interrompe a fala em stopSol()', async () => {
+  const rt = createSOLRuntime();
+  assert.equal(rt.elements.stopBtn.hidden, true, 'Botão de parar deve iniciar oculto em idle');
+
+  rt.mode('listen');
+  assert.equal(rt.elements.stopBtn.hidden, true, 'Botão de parar deve ficar oculto enquanto ouve');
+
+  rt.mode('talk');
+  assert.equal(rt.elements.stopBtn.hidden, false, 'Botão de parar deve aparecer quando a Sol está falando');
+  assert.equal(rt.elements.orb.dataset.m, 'talk');
+
+  const prevTk = rt.tk;
+  rt.stopSol();
+  assert.ok(rt.tk > prevTk, 'stopSol deve invalidar fila de fala incrementando tk');
+  assert.equal(rt.elements.orb.dataset.m, 'idle');
+  assert.equal(rt.elements.stopBtn.hidden, true, 'Botão de parar deve voltar a ficar oculto após parar');
+  assert.equal(rt.elements.hint.textContent, 'Fala interrompida. Toque no microfone para falar.');
+});
+
+test('16. Modo Pitch (?pitch=1) responde o fluxo de investidores em 0ms sem LLM e envia perguntas abertas para a IA', async () => {
+  const rt = createSOLRuntime();
+  rt.SOL_PITCH_MODE = true;
+  let llmCalls = 0;
+
   rt.SOLAgent.setTransport(async () => {
-    await new Promise((r) => globalThis.setTimeout(r, 620));
+    llmCalls += 1;
     return {
       ok: true,
-      text: 'Mantenha a palhada sobre a terra para conservar água.'
+      text: 'Nosso modelo de receita é B2B2C gratuito ao pequeno produtor com licenciamento para cooperativas.'
     };
   });
 
-  const res2 = await rt.handle(rt.norm('e o que faço com o solo?'), 'e o que faço com o solo?');
-  assert.equal(res2.mode, 'agent');
-  assert.ok(fillerPhrases.length > countBeforeTurn2, 'Turno 2 também deve emitir feedback de voz');
-  assert.equal(overlapDetected, false, 'Nenhuma frase pode se atropelar durante a fala');
-  assert.equal(new Set(fillerPhrases).size, fillerPhrases.length, 'Frases de feedback não devem se repetir entre si');
-  assert.ok(finalEvents.length >= 2, 'Respostas finais devem ser entregues ao seq()');
-  assertAllSpokenNumbersGrounded(rt, res1);
-  assertAllSpokenNumbersGrounded(rt, res2);
+  // 1. Saudação / introdução instantânea
+  const rIntro = await rt.handle(rt.norm('oi sol'), 'Oi Sol');
+  assert.equal(llmCalls, 0);
+  assert.equal(rIntro.meta.pitch_scene, 'intro');
+  rt.spokenHistory.length = 0;
+
+  // 2. Multi-slot em uma única fala roda pipe() e build() em 0ms
+  const rFull = await rt.handle(rt.norm('tenho 3 tarefas de milho e o problema é a seca'), 'tenho 3 tarefas de milho e o problema é a seca');
+  assert.equal(llmCalls, 0);
+  assert.equal(rFull.meta.pitch_scene, 'full_analysis');
+  assert.ok(rt.plan !== null);
+  assertAllSpokenNumbersGrounded(rt, rFull);
+  rt.spokenHistory.length = 0;
+
+  // 3. Gráficos sob demanda em 0ms
+  const rViz = await rt.handle(rt.norm('mostrar graficos'), 'mostrar gráficos');
+  assert.equal(llmCalls, 0);
+  assert.equal(rt.elements.viz.hidden, false);
+  assert.equal(rViz.meta.pitch_scene, 'show_charts');
+  rt.spokenHistory.length = 0;
+
+  // 4. Recálculo dinâmico ao mudar área em 0ms
+  const rChg = await rt.handle(rt.norm('mudar area para 5 hectares'), 'mudar área para 5 hectares');
+  assert.equal(llmCalls, 0);
+  assert.equal(rt.A.area, 5);
+  assert.equal(rChg.meta.pitch_scene, 'change_area');
+  assertAllSpokenNumbersGrounded(rt, rChg);
+  rt.spokenHistory.length = 0;
+
+  // 5. Adaptação cognitiva para nível técnico em 0ms
+  const rTech = await rt.handle(rt.norm('qual o NDVI do MODIS e umidade SMAP para evapotranspiração?'), 'qual o NDVI do MODIS e umidade SMAP para evapotranspiração?');
+  assert.equal(llmCalls, 0);
+  assert.equal(rTech.meta.pitch_scene, 'technical_adaptation');
+  assertAllSpokenNumbersGrounded(rt, rTech);
+  rt.spokenHistory.length = 0;
+
+  // 6. Pergunta aberta inesperada de um investidor vai para o backend LLM
+  const rOpen = await rt.handle(rt.norm('como voces monetizam isso em cooperativas?'), 'como vocês monetizam isso em cooperativas?');
+  assert.equal(llmCalls, 1, 'Pergunta aberta fora do roteiro deve ir normalmente para o LLM');
+  assert.ok(rOpen.chunks.join(' ').includes('B2B2C'));
 });

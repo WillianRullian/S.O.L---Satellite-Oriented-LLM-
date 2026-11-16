@@ -39,8 +39,8 @@ def detect_pesticide_prescription_request(text: str) -> bool:
 
 
 SAFE_INJECTION_RESPONSE = [
-    "Eu sou a Sol, sua parceira no campo, e sigo regras firmes de segurança para cuidar da sua lavoura.",
-    "Me conte o tamanho da sua área, o que você planta ou sua dúvida sobre a roça que a gente resolve juntos!"
+    "Eu sou a Sol, sua parceira no campo, e sigo regras firmes de segurança para cuidar da sua área.",
+    "Me conte o tamanho da sua terra, o que você planta ou sua dúvida que a gente resolve juntos!"
 ]
 
 SAFE_PESTICIDE_RESPONSE = [
@@ -314,3 +314,45 @@ def verify_numeric_grounding(
         return True, []
     ungrounded = [n for n in spoken_nums if not is_number_allowed(n, allowed_numbers)]
     return len(ungrounded) == 0, ungrounded
+
+
+INTERNAL_LEAK_RE = re.compile(
+    r"(<thought>|</thought>|functionCall|tool_calls|https?://|www\.|```|\{\s*\"[a-z_]+\"\s*:)",
+    flags=re.IGNORECASE,
+)
+
+
+def is_inaudible_or_noise(text: str) -> bool:
+    norm = normalize_text(text or "").strip()
+    if re.fullmatch(r"\d+(?:[.,]\d+)?", norm):
+        return False
+    alnum = re.sub(r"[^a-z0-9]", "", norm)
+    if len(alnum) < 2:
+        return True
+    if norm in {"hm", "hmm", "hum", "uhum", "ah", "eh"}:
+        return True
+    return False
+
+
+def detect_hallucination_or_nonsense(text: str) -> Tuple[bool, str]:
+    """
+    Checks for leaked internal reasoning/JSON, invented URLs, or repetitive degenerate loops.
+    Returns (has_issue, reason).
+    """
+    if not text or not str(text).strip():
+        return False, ""
+    raw = str(text)
+    if INTERNAL_LEAK_RE.search(raw):
+        return True, "internal_markup_or_url_leak"
+    # Detect degenerate phrase repetition (>= 4 identical tokens in sequence)
+    tokens = re.findall(r"[a-zA-ZÀ-ÿ]+", normalize_text(raw))
+    if len(tokens) >= 6:
+        streak = 1
+        for idx in range(1, len(tokens)):
+            if tokens[idx] == tokens[idx - 1]:
+                streak += 1
+                if streak >= 4:
+                    return True, "repetitive_token_loop"
+            else:
+                streak = 1
+    return False, ""
