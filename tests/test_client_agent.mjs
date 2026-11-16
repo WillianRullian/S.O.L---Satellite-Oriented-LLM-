@@ -769,3 +769,123 @@ test('16. Modo Pitch (?pitch=1) responde o fluxo de investidores em 0ms sem LLM 
   assert.equal(llmCalls, 1, 'Pergunta aberta fora do roteiro deve ir normalmente para o LLM');
   assert.ok(rOpen.chunks.join(' ').includes('B2B2C'));
 });
+
+test('17. Classificador de registro N1-N4, Dicionário de Dupla Camada e ancoragem sem decimais em N1', async () => {
+  const rt = createSOLRuntime();
+  rt.L = rt.FB;
+
+  // Inicia em N2 neutro
+  assert.equal(rt.P.lvl, 2);
+
+  // Léxico regional aciona N1 e mantém por histerese em fala neutra seguinte
+  rt.reg(rt.norm('planto três tarefas de macaxeira na roça'), 'planto três tarefas de macaxeira na roça');
+  assert.equal(rt.P.lvl, 1);
+  rt.reg(rt.norm('sim'), 'sim');
+  assert.equal(rt.P.lvl, 1, 'Histerese deve manter N1 em turno neutro curto');
+
+  // Preenche e gera plano em N1: sem decimais, sem siglas e 100% ancorado
+  rt.fill(rt.norm('planto três tarefas de macaxeira e tô sofrendo com a seca'), 'planto três tarefas de macaxeira e tô sofrendo com a seca');
+  rt.plan = rt.build();
+  const n1Text = rt.plan.chunks.join(' ');
+  assert.ok(!/\d+[.,]\d+/.test(n1Text), `N1 não deve conter números decimais: "${n1Text}"`);
+  assert.ok(!/\b(NDVI|SMAP|MODIS|ECOSTRESS|SRTM|GPM|ATER)\b/.test(n1Text), `N1 não deve conter siglas técnicas: "${n1Text}"`);
+  assert.ok(n1Text.includes('três tarefas'), 'N1 deve ecoar a unidade falada pelo produtor');
+  rt.spokenHistory.length = 0;
+  rt.plan.chunks.forEach((c) => rt.spokenHistory.push(c));
+  assertAllSpokenNumbersGrounded(rt, { tool_results: [] });
+
+  // Léxico técnico sobe para N3 e expõe variáveis exatas de pipe() sem chamar ws de porcentagem
+  rt.reg(rt.norm('qual o NDVI do MODIS, umidade volumétrica SMAP e declividade SRTM?'), 'qual o NDVI do MODIS, umidade volumétrica SMAP e declividade SRTM?');
+  assert.equal(rt.P.lvl, 3);
+  rt.plan = rt.build();
+  const n3Text = rt.plan.chunks.join(' ');
+  assert.ok(n3Text.includes(String(rt.plan.d.ndvi)), 'N3 deve verbalizar d.ndvi exato');
+  assert.ok(n3Text.includes(String(rt.plan.d.smap)), 'N3 deve verbalizar d.smap exato');
+  assert.ok(n3Text.includes(`Índice de risco hídrico ${rt.plan.d.ws} numa escala até 100`), 'N3 deve tratar ws como índice de 0 a 100 e não porcentagem');
+  rt.spokenHistory.length = 0;
+  rt.plan.chunks.forEach((c) => rt.spokenHistory.push(c));
+  assertAllSpokenNumbersGrounded(rt, { tool_results: [] });
+
+  // Comando explícito trava o nível até pedir volta ao normal
+  rt.reg(rt.norm('fala mais simples'), 'fala mais simples');
+  assert.equal(rt.P.lvl, 1);
+  assert.equal(rt.P.lock, true);
+  rt.reg(rt.norm('NDVI MODIS SMAP ECOSTRESS'), 'NDVI MODIS SMAP ECOSTRESS');
+  assert.equal(rt.P.lvl, 1, 'Trava explícita deve impedir subida automática para N3');
+  rt.reg(rt.norm('volta ao normal'), 'volta ao normal');
+  assert.equal(rt.P.lock, false);
+  assert.equal(rt.P.lvl, 2);
+});
+
+test('18. Multi-slot por regras, confirmação empática, escada de reparo, aviso único de simulação, rótulo Economia e prosódia', async () => {
+  const rt = createSOLRuntime();
+
+  // 1. Abertura não presume roça nem fazenda
+  rt.start();
+  const introText = rt.spokenHistory.join(' ').toLowerCase();
+  assert.ok(!/\b(ro[çc]a|fazenda)\b/.test(introText), 'Abertura start() não deve presumir roça ou fazenda');
+  rt.spokenHistory.length = 0;
+
+  // 2. Confirmação implícita empática sem "Que beleza!" e com eco das palavras do produtor
+  rt.state = 'area';
+  rt.handleRules(rt.norm('duas tarefas'), 'duas tarefas');
+  assert.equal(rt.state, 'crop');
+  const askCrop = rt.spokenHistory.join(' ');
+  assert.ok(askCrop.includes('Entendi, duas tarefas'), `Deve ecoar a unidade falada pelo produtor: "${askCrop}"`);
+  assert.ok(!askCrop.includes('Que beleza'), 'Não deve usar reação automática Que beleza!');
+  rt.spokenHistory.length = 0;
+
+  // 3. Escada de reparo em miss(): duas falhas seguidas geram falas distintas e não repetitivas
+  rt.miss('algo incompreensivel');
+  const miss1 = rt.spokenHistory.pop();
+  rt.miss('ainda incompreensivel');
+  const miss2 = rt.spokenHistory.pop();
+  assert.notEqual(miss1, miss2, 'Escada de reparo deve mudar a orientação entre a primeira e a segunda falha');
+  rt.spokenHistory.length = 0;
+
+  // 4. Multi-slot completo em uma única frase no modo por regras (inclui dor fora do state=="pain")
+  const rtMulti = createSOLRuntime();
+  const phrase = 'planto três tarefas de macaxeira e tô sofrendo com a seca';
+  rtMulti.handleRules(rtMulti.norm(phrase), phrase);
+  assert.equal(rtMulti.state, 'ready', 'Multi-slot deve preencher área, cultura e dificuldade de uma vez e ir para ready');
+  assert.equal(rtMulti.A.crop, 'Mandioca');
+  assert.equal(rtMulti.A.pain, 'seca');
+  const firstAnalysis = rtMulti.spokenHistory.join(' ');
+  assert.ok(firstAnalysis.includes('três tarefas de macaxeira'), 'Análise deve confirmar os slots com as palavras do produtor');
+  assert.ok(firstAnalysis.includes('números são de teste'), 'Primeira análise na sessão deve avisar que os dados são de teste');
+  assertAllSpokenNumbersGrounded(rtMulti, { tool_results: [] });
+
+  // Segunda análise na mesma sessão não repete o aviso de números de teste
+  rtMulti.spokenHistory.length = 0;
+  rtMulti.analyze([]);
+  const secondAnalysis = rtMulti.spokenHistory.join(' ');
+  assert.ok(!secondAnalysis.includes('números são de teste'), 'Aviso de simulação deve ocorrer apenas uma vez por sessão');
+
+  // 5. Rótulo Economia em vez de Custo no #viz
+  rtMulti.viz(true);
+  assert.ok(rtMulti.elements.viz.innerHTML.includes('<span>Economia</span>'), 'Gráfico deve exibir rótulo Economia');
+  assert.ok(!rtMulti.elements.viz.innerHTML.includes('<span>Custo</span>'), 'Gráfico não deve exibir rótulo ambíguo Custo');
+
+  // 6. Prosódia adaptativa em speakBrowser mantém u.rate entre 0.8 e 1.2 para todos os níveis
+  const utteredRates = [];
+  rtMulti.SpeechSynthesisUtterance = function (txt) {
+    this.text = txt;
+    this.rate = 1;
+    this.pitch = 1;
+  };
+  rtMulti.ss = {
+    cancel() {},
+    getVoices: () => [],
+    speak(u) {
+      utteredRates.push(u.rate);
+      if (u.onend) u.onend();
+    }
+  };
+  for (const lvl of [1, 2, 3, 4]) {
+    rtMulti.P.lvl = lvl;
+    rtMulti.speakBrowser('Frase curta de teste.', ++rtMulti.tk);
+  }
+  assert.equal(utteredRates.length, 4);
+  assert.ok(utteredRates[0] < utteredRates[1] && utteredRates[1] < utteredRates[2], 'Taxa de fala deve crescer de N1 para N3');
+  assert.ok(utteredRates.every((r) => r >= 0.8 && r <= 1.2), 'Taxa de fala deve ficar sempre entre 0.8 e 1.2');
+});

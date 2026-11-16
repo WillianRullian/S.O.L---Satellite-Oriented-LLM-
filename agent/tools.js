@@ -58,7 +58,7 @@
       type: 'function',
       function: {
         name: 'show_charts',
-        description: 'Exibe os gráficos comparativos de Água, Terra, Custo e Produção na tela chamando viz(true).',
+        description: 'Exibe os gráficos comparativos de Água, Terra, Economia e Produção na tela chamando viz(true).',
         parameters: {
           type: 'object',
           properties: {}
@@ -234,12 +234,12 @@
         risks: 'Dados orbitais estimados em grade regional; microclimas e tipo de solo da propriedade alteram a retenção real de água.'
       },
       climate_zarc: {
-        summary: 'A janela climática simulada mostra ' + telemetry.hot + ' dias acima de 35 graus no ano e risco hídrico estimado de ' + telemetry.ws + ' por cento para a região, exigindo atenção ao início firme das chuvas antes de semear ' + crop.toLowerCase() + '.',
+        summary: 'A janela climática simulada mostra ' + telemetry.hot + ' dias acima de 35 graus no ano e índice de risco hídrico estimado em ' + telemetry.ws + ' numa escala até 100 para a região, exigindo atenção ao início firme das chuvas antes de semear ' + crop.toLowerCase() + '.',
         recommendation: 'Só semeie após umidade regular no solo superficial, alinhando a época de plantio ao Zoneamento Agrícola de Risco Climático da região.',
         risks: 'Plantar no seco ou antes de estabilizar a umidade aumenta o risco de falha de germinação por veranico.'
       },
       soil_management: {
-        summary: 'Para ' + crop.toLowerCase() + ' com índice de degradação estimado em ' + telemetry.sd + ' por cento e declividade média de ' + telemetry.slope + ' por cento, práticas conservacionistas como plantio direto na palha, consórcio com leguminosas e curvas de nível fortalecem a estrutura do solo.',
+        summary: 'Para ' + crop.toLowerCase() + ' com índice de degradação estimado em ' + telemetry.sd + ' numa escala até 100 e declividade média de ' + telemetry.slope + ' por cento, práticas conservacionistas como plantio direto na palha, consórcio com leguminosas e curvas de nível fortalecem a estrutura do solo.',
         recommendation: 'Mantenha o solo sempre coberto com palhada ou leguminosas como feijão-de-porco e crotalária, e avalie análise química de solo antes de corrigir acidez ou adubação.',
         risks: 'Manejo sem proteção expõe a camada fértil à erosão e eleva a perda de nutrientes na primeira chuva forte.'
       },
@@ -254,7 +254,7 @@
         risks: 'Preços oscilam bastante na safra cheia; armazenar corretamente e diversificar reduz a pressão para vender tudo na baixa.'
       },
       general: {
-        summary: 'Análise consultiva simulada integrada aos indicadores regionais (umidade ' + telemetry.soil_moisture_class + ', chuva recente de ' + telemetry.r30 + ' milímetros e risco hídrico de ' + telemetry.ws + ' por cento) para apoiar sua tomada de decisão em ' + crop.toLowerCase() + '.',
+        summary: 'Análise consultiva simulada integrada aos indicadores regionais (umidade ' + telemetry.soil_moisture_class + ', chuva recente de ' + telemetry.r30 + ' milímetros e índice de risco hídrico de ' + telemetry.ws + ' numa escala até 100) para apoiar sua tomada de decisão em ' + crop.toLowerCase() + '.',
         recommendation: 'Use práticas que conservam água e vida do solo, planeje em etapas pequenas e valide a aplicação específica com o técnico agrícola ou a extensão rural do município.',
         risks: 'Como são estimativas regionais simuladas, condições locais de solo e microclima devem ser conferidas em campo.'
       }

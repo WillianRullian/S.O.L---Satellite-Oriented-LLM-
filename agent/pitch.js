@@ -64,7 +64,7 @@
     var rec = analysis.recommended_strategy;
     var cur = analysis.current_strategy;
     var raw = [
-      'Prontinho! Os satélites mostram chuva recente de ' + d.r30 + ' milímetros e risco hídrico de ' + d.ws + ' por cento na sua área de ' + analysis.area_formatted + '.',
+      'Prontinho! Os satélites mostram chuva recente de ' + d.r30 + ' milímetros e risco de falta de água ' + (typeof root.lvl === 'function' ? root.lvl(d.ws) : 'estimado') + ' na sua área de ' + analysis.area_formatted + '.',
       'Para ganhar fôlego e produtividade, recomendo ' + rec.title + ', estimando ' + rec.production_formatted + ' por safra contra ' + cur.production_formatted + ' no manejo atual.',
       'São estimativas simuladas para apoiar sua decisão; confirme sempre com o técnico agrícola local e me peça para mostrar os gráficos se quiser ver!'
     ].join(' ');
@@ -86,7 +86,7 @@
     var d = an.indicators;
     var raw = [
       'Pelas estimativas orbitais simuladas, o NDVI do MODIS está em ' + d.ndvi + ' e a umidade volumétrica no SMAP marca ' + d.smap + ', com ' + d.hot + ' dias acima de 35 graus no ECOSTRESS.',
-      'Manter palhada e rotação de culturas reduz a evapotranspiração direta do solo e diminui o risco hídrico de ' + d.ws + ' por cento; valide o manejo com o engenheiro agrônomo local.'
+      'Manter palhada e rotação de culturas reduz a evapotranspiração direta do solo e o risco hídrico, hoje com índice ' + d.ws + ' numa escala até 100; valide o manejo com o engenheiro agrônomo local.'
     ].join(' ');
     return {
       chunks: prompts.splitSpeechChunks(raw, 200),
@@ -113,7 +113,7 @@
       var sRes = tools.executeTool('show_charts', {});
       if (sRes && sRes.ok) {
         return {
-          chunks: ['Aqui estão os gráficos comparativos de água, terra, custo e produção da sua área!'],
+          chunks: ['Aqui estão os gráficos comparativos de água, terra, economia e produção da sua área!'],
           tool_results: [{ id: 'fast_show', name: 'show_charts', arguments: {}, result: sRes }],
           pitch_scene: 'show_charts'
         };
@@ -249,7 +249,7 @@
       var offAn = tools.executeTool('run_analysis', {});
       trOff.push({ id: 'pitch_off_an', name: 'run_analysis', arguments: {}, result: offAn });
       var od = offAn.indicators;
-      var offRaw = 'Se a chuva atrasar, antecipar o plantio aumenta o risco porque o índice de estresse hídrico está em ' + od.ws + ' por cento, com ' + od.r30 + ' milímetros recentes. Mantenha cobertura com palhada no solo e confirme a janela ideal com o técnico agrícola.';
+      var offRaw = 'Se a chuva atrasar, antecipar o plantio aumenta o risco porque o índice de estresse hídrico está em ' + od.ws + ' numa escala até 100, com ' + od.r30 + ' milímetros recentes. Mantenha cobertura com palhada no solo e confirme a janela ideal com o técnico agrícola.';
       return {
         chunks: prompts.splitSpeechChunks(offRaw, 200),
         tool_results: trOff,
@@ -273,7 +273,7 @@
     var lines = [
       'Oi! Que alegria estar aqui com vocês! Eu sou a Sol, da Big Tech, sua parceira de campo guiada por voz.',
       'Me conta qual é o tamanho da sua área, o que você planta e o que mais te preocupa hoje!',
-      'Aqui estão os gráficos comparativos de água, terra, custo e produção da sua área!',
+      'Aqui estão os gráficos comparativos de água, terra, economia e produção da sua área!',
       'Prontinho, ocultei os gráficos para deixar a tela limpa!',
       'Eu não posso indicar receitas nem dosagens de agrotóxicos ou defensivos químicos por segurança.'
     ];

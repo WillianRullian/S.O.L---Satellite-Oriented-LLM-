@@ -7,8 +7,8 @@
 | Documento | Planejamento técnico e arquitetural da persona da S.O.L. |
 | Escopo | Protótipo (`index.html` + `agent/`), MVP (FastAPI + streaming) e Escala (N1 a N4, omnicanal) |
 | Base analisada | `README.md`, `index.html`, `docs/architecture.md`, `docs/scalability-plan.md`, `agent/prompts.js`, `agent/memory.js` |
-| Branch de referência | `feature/sol-agent` (estado atual do diretório de trabalho) |
-| Status | Proposta. Nenhuma alteração no `index.html` foi feita; aguardando aprovação |
+| Branch de referência | `feature/sol-agent` reconciliada com `main` |
+| Status | P0 (P0-00 a P0-13) implementado e validado por testes automatizados |
 
 ---
 
@@ -602,9 +602,9 @@ Novos cenários em `tests/test_client_agent.mjs`, no mesmo padrão do runtime em
 
 ---
 
-## 12. Resumo executivo das alterações propostas no `index.html`
+## 12. Resumo executivo das alterações implementadas no `index.html`
 
-Nenhuma destas alterações foi aplicada. Todas aguardam confirmação.
+Todas as alterações de P0 (P0-00 a P0-13) foram implementadas e verificadas pela suíte de testes.
 
 | Função | Alteração proposta | Itens |
 |---|---|---|

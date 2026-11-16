@@ -460,6 +460,18 @@
     lines.push('- Registro de comunicação: ' + (fp.communication_register === 'technical'
       ? 'Técnico/orbital — pode usar métricas científicas explicando implicações práticas'
       : 'Prático/popular — linguagem simples, calorosa, sem jargões nem infantilização, valorizando saberes locais'));
+    var rg = (root.RG && typeof root.RG === 'object') ? root.RG : null;
+    if (rg && rg.lvl) {
+      var lvlGuide = {
+        1: 'N1 (linguagem do dia a dia) — frases curtas de até 90 caracteres, uma ideia por frase, sem siglas, sem decimais, metáforas práticas do campo, foco na ação da semana',
+        2: 'N2 (produtor prático) — linguagem simples, manejo prático com produção em sacas ou toneladas, sem siglas desnecessárias',
+        3: 'N3 (técnico) — terminologia agronômica precisa, cite a variável e a fonte orbital (SMAP, MODIS, GPM, ECOSTRESS, SRTM, Landsat)',
+        4: 'N4 (gestão) — métricas completas e comparação objetiva dos três cenários, com fonte de cada indicador'
+      }[rg.lvl];
+      if (lvlGuide) lines.push('- Nível de registro detectado pela fala: ' + lvlGuide + '.');
+      if (rg.areaRaw) lines.push('- Unidade usada pelo produtor: "' + rg.areaRaw + '" — repita nas palavras dele.');
+      if (rg.cropRaw) lines.push('- Nome da cultura nas palavras dele: "' + rg.cropRaw + '".');
+    }
     if (fp.goals && fp.goals.length) {
       lines.push('- Metas e objetivos: ' + fp.goals.join(' | '));
     }
@@ -492,8 +504,8 @@
       lines.push('DADOS ORBITAIS SIMULADOS ATUAIS (JÁ CALCULADOS — RESPONDA DIRETAMENTE USANDO APENAS ESTES NÚMEROS):');
       lines.push('- Chuva 30 dias: ' + d.r30 + ' mm (desvio ' + d.dev + '%), Chuva anual: ' + d.rain + ' mm');
       lines.push('- Umidade SMAP: ' + d.smap + ', NDVI MODIS: ' + d.ndvi + ', Temperatura máx: ' + d.tmax + ' °C, Dias > 35 graus: ' + d.hot);
-      lines.push('- Solo exposto: ' + d.bare + ' meses, Declividade SRTM: ' + d.slope + '%, Risco hídrico (ws): ' + d.ws + '%, Degradação do solo (sd): ' + d.sd + '%');
-      lines.push('- Recomendada (' + rec.title + '): ' + rec.prod_spoken + ' | Água ' + rec.water_score + '%, Terra ' + rec.soil_score + '%, Custo ' + rec.cost_score + '%');
+      lines.push('- Solo exposto: ' + d.bare + ' meses, Declividade SRTM: ' + d.slope + '%, Índice de risco hídrico (ws): ' + d.ws + ' de 100, Índice de degradação do solo (sd): ' + d.sd + ' de 100 (ws e sd são índices compostos, NÃO são porcentagens nem probabilidades: nunca diga "por cento" para eles)');
+      lines.push('- Recomendada (' + rec.title + '): ' + rec.prod_spoken + ' | Escores de 0 a 100: Água ' + rec.water_score + ', Terra ' + rec.soil_score + ', Economia de custo ' + rec.cost_score + ' (maior significa mais barato)');
       lines.push('- Manejo atual (' + cur.title + '): ' + cur.prod_spoken);
     }
     return lines.join('\n');
